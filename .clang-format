@@ -1,0 +1,29 @@
+# initial style is microsoft with some modifications
+BasedOnStyle: Microsoft
+
+# Set the column limit for line wrapping
+ColumnLimit: 80
+
+# Don't pack parameters into a single line
+BinPackParameters: false
+
+# Align parameters with the opening parenthesis
+AlignAfterOpenBracket: Align
+
+# Align consecutive declarations
+AlignConsecutiveDeclarations: true
+
+# Align consecutive assignments
+AlignConsecutiveAssignments: true
+
+# Align consecutive bit fields
+AlignConsecutiveBitFields: true
+
+# Align consecutive macros
+AlignConsecutiveMacros: true
+
+# Break after function declaration
+BreakBeforeBraces: Allman
+
+# Control parameter breaking style
+AllowAllParametersOfDeclarationOnNextLine: false
