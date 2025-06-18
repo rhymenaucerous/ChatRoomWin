@@ -202,7 +202,7 @@ wmain(INT argc, PTSTR argv[]) {
 	//NOTE: Creating thread to handle server messages. Will continuously wait
 	//for chat type messages from the server.
 	HANDLE hListenerThread = CreateThread(NULL, NO_OPTION,
-		(LPTHREAD_START_ROUTINE)ListenForChats,
+		(LPTHREAD_START_ROUTINE)(PULONG)ListenForChats,
 		pListenerArgs, NO_OPTION, NULL);
 
 	if (NULL == hListenerThread)
