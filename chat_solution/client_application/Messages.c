@@ -1,11 +1,14 @@
 /*****************************************************************//**
  * \file   Messages.c
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   September 2024
  *********************************************************************/
-#include "pch.h"
+#include <WinSock2.h>
+#include <Windows.h>
+#include <stdio.h>
+
 #include "Messages.h"
 
 //NOTE: Conversion functions for ntoh and hton for PWSTR types.
@@ -24,7 +27,7 @@ WstrHostToNet(PWSTR pszString, INT iLen)
 	{
 		pszString[iCounter] = WcharHostToNet(pszString[iCounter]);
 	}
-} 
+}
 
 static WCHAR
 WcharNetToHost(WCHAR HostChar)

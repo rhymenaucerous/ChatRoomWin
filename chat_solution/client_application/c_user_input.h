@@ -1,14 +1,18 @@
 /*****************************************************************//**
  * \file   c_user_input.h
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   September 2024
  *********************************************************************/
 #pragma once
-#include "pch.h"
+
+#include <Windows.h>
+#include <stdio.h>
+
 #include "c_shared.h"
-#include "c_messages.h"
+
+#define STRINGS_EQUAL 0
 
 HRESULT
 UserListen(PLISTENERARGS pListenerArgs);

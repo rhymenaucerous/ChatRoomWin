@@ -1,11 +1,13 @@
 /*****************************************************************//**
  * \file   connect.c
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   August 2024
  *********************************************************************/
-#include "pch.h"
+#include <Windows.h>
+#include <stdio.h>
+
 #include "c_connect.h"
 
 
@@ -15,14 +17,13 @@
 PLISTENERARGS
 ChatCreate(SOCKET ServerSocket)
 {
-	
+
 	PLISTENERARGS pListenerArgs = HeapAlloc(GetProcessHeap(),
 		HEAP_ZERO_MEMORY,
 		sizeof(LISTENERARGS));
-
 	if (NULL == pListenerArgs)
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("HeapAlloc failed");
 		return NULL;
 	}
 
@@ -37,25 +38,23 @@ ChatCreate(SOCKET ServerSocket)
 		|| (NULL == pListenerArgs->m_hHandles[STD_OUT_MUTEX])
 		|| (NULL == pListenerArgs->m_hHandles[STD_ERR_MUTEX]))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "CreateMutexW()");
+		DEBUG_ERROR("CreateMutexW()");
 		return NULL;
 	}
 
 	//NOTE: Create event for FD_READ
 	pListenerArgs->m_hHandles[READ_EVENT] = WSACreateEvent();
-
 	if (WSA_INVALID_EVENT == pListenerArgs->m_hHandles[READ_EVENT])
 	{
-		PrintErrorWSA((PCHAR)__func__, __LINE__);
+		DEBUG_WSAERROR("WSACreateEvent failed");
 		return NULL;
 	}
 
 	INT iReturn = WSAEventSelect(ServerSocket,
 		pListenerArgs->m_hHandles[READ_EVENT], FD_READ);
-
 	if (SOCKET_ERROR == iReturn)
 	{
-		PrintErrorWSA((PCHAR)__func__, __LINE__);
+		DEBUG_WSAERROR("WSAEventSelect failed");
 		return NULL;
 	}
 
@@ -69,13 +68,13 @@ ChatConnect(PCLIENTCHATARGS pChatArgs)
 {
 	if (NULL == pChatArgs)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "Input NULL");
+		DEBUG_PRINT("Input NULL");
 		return INVALID_SOCKET;
 	}
 
 	if (EXIT_FAILURE == NetSetUp())
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "NetSetUp()");
+		DEBUG_PRINT("NetSetUp()");
 		return INVALID_SOCKET;
 	}
 
@@ -84,12 +83,9 @@ ChatConnect(PCLIENTCHATARGS pChatArgs)
 
 	if (INVALID_SOCKET == ServerSocket)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "NetConnect()");
+		DEBUG_PRINT("NetConnect()");
 		return INVALID_SOCKET;
 	}
-
-	//TODO: remove depreciated code from here.
-	//send(ServerSocket, (const PCHAR)L"Hello!\n", 7*sizeof(WCHAR), NO_OPTION);
 
 	return ServerSocket;
 }

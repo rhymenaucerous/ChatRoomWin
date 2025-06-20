@@ -1,12 +1,11 @@
 /*****************************************************************//**
  * \file   s_message.h
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   September 2024
  *********************************************************************/
 #pragma once
-#include "pch.h"
 #include "s_shared.h"
 
 VOID

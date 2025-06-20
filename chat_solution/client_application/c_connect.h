@@ -1,12 +1,15 @@
 /*****************************************************************//**
  * \file   connect.h
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   August 2024
  *********************************************************************/
 #pragma once
-#include "pch.h"
+
+#include <Windows.h>
+#include <stdio.h>
+
 #include "c_shared.h"
 
 PLISTENERARGS

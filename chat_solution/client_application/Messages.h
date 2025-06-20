@@ -1,12 +1,14 @@
 /*****************************************************************//**
  * \file   Messages.h
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   September 2024
  *********************************************************************/
 #pragma once
-#include "pch.h"
+
+#include <Windows.h>
+#include <stdio.h>
 
 //NOTE: Message types
 #define TYPE_ACCOUNT 0
@@ -39,9 +41,9 @@
 
 //NOTE: INT8 will not have to be converted from network byte order. WORD will.
 // WCHAR characters will also have to be converted.
-// 
+//
 //NOTE: By selecting WORD as the data type, the server implicitly limits the
-// network packet size at 65535 characters for both data sections. They are 
+// network packet size at 65535 characters for both data sections. They are
 // explicitly set to BUFF_SIZE (1024 wide characters - 2048 bytes) and below.
 typedef struct CHATMSG {
 	INT8  iType;
@@ -51,7 +53,7 @@ typedef struct CHATMSG {
 				   //(up to) two strings in the message. This way, the reciever
 				   //will always know how many bytes they're going to recieve.
 	WORD  wLenTwo;
-	PWSTR pszDataOne; 
+	PWSTR pszDataOne;
 	PWSTR pszDataTwo;
 } CHATMSG, * PCHATMSG;
 

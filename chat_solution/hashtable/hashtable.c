@@ -243,12 +243,8 @@ HashTableInit(PPHASHTABLE ppHashTable,
     *ppHashTable = pHashTable;
     goto EXIT;
 CLEAN:
-    if (0 == ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pHashTable,
-                             sizeof(HASHTABLE)))
-    {
-        DEBUG_ERROR("ZeroingHeapFree");
-        goto EXIT;
-    }
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pHashTable,
+                             sizeof(HASHTABLE));
 EXIT:
     return Return;
 }
@@ -525,12 +521,8 @@ static RETURNTYPE HashTableReHash(PHASHTABLE pHashTable)
         goto CLEAN;
     }
 
-    if (0 == ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pHashTable->m_ppTable,
-                             wCapacityHolder * sizeof(PLINKEDLIST)))
-    {
-        DEBUG_ERROR("ZeroingHeapFree()");
-        goto CLEAN;
-    }
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pHashTable->m_ppTable,
+                             wCapacityHolder * sizeof(PLINKEDLIST));
 
     pHashTable->m_ppTable =
         HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
@@ -555,11 +547,8 @@ static RETURNTYPE HashTableReHash(PHASHTABLE pHashTable)
     Return = SUCCESS;
     goto CLEAN;
 CLEAN2:
-    if (0 == ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pHashTable->m_ppTable,
-                             pHashTable->m_wCapacity * sizeof(PLINKEDLIST)))
-    {
-        DEBUG_ERROR("ZeroingHeapFree()");
-    }
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pHashTable->m_ppTable,
+                             pHashTable->m_wCapacity * sizeof(PLINKEDLIST));
 CLEAN:
     LinkedListDestroy(pLinkedList, NULL);
 EXIT:
@@ -624,11 +613,8 @@ HashTableNewEntry(PHASHTABLE pHashTable,
     Return = SUCCESS;
     goto EXIT;
 CLEAN:
-    if (0 == ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pNewEntry,
-                             sizeof(HASHTABLEENTRY)))
-    {
-        DEBUG_ERROR("ZeroingHeapFree()");
-    }
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pNewEntry,
+                             sizeof(HASHTABLEENTRY));
 EXIT:
     return Return;
 }
@@ -752,12 +738,8 @@ HashTableDestroyEntry(PHASHTABLE pHashTable, PCHAR pszKey, WORD wKeyLen)
                 }
 
                 pData = pTempEntry->m_pData;
-                if (0 == ZeroingHeapFree(GetProcessHeap(), NO_OPTION,
-                                         pTempEntry, sizeof(HASHTABLEENTRY)))
-                {
-                    DEBUG_ERROR("ZeroingHeapFree()");
-                    goto EXIT;
-                }
+                ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pTempEntry,
+                                sizeof(HASHTABLEENTRY));
 
                 pHashTable->m_wSize -= 1;
                 goto EXIT;
@@ -780,13 +762,13 @@ static void HashTableFreeHelper(PVOID pData)
 
     if (NULL == pTempEntry->m_pfnFreeFunction)
     {
-        ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pTempEntry,
+        ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pTempEntry,
                         sizeof(HASHTABLEENTRY));
     }
     else
     {
         pTempEntry->m_pfnFreeFunction(pTempEntry->m_pData);
-        ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pTempEntry,
+        ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pTempEntry,
                         sizeof(HASHTABLEENTRY));
     }
 }
@@ -829,19 +811,11 @@ HashTableDestroy(PHASHTABLE pHashTable, VOID (*pfnFreeFunction)(PVOID))
 
     Return = SUCCESS;
 CLEAN:
-    if (0 == ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pHashTable->m_ppTable,
-                             pHashTable->m_wCapacity * sizeof(PLINKEDLIST)))
-    {
-        DEBUG_ERROR("ZeroingHeapFree()");
-        Return = ERR_GENERIC;
-    }
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pHashTable->m_ppTable,
+                             pHashTable->m_wCapacity * sizeof(PLINKEDLIST));
 
-    if (0 == ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pHashTable,
-                             sizeof(HASHTABLE)))
-    {
-        DEBUG_ERROR("ZeroingHeapFree()");
-        Return = ERR_GENERIC;
-    }
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pHashTable,
+                             sizeof(HASHTABLE));
 EXIT:
     return Return;
 }

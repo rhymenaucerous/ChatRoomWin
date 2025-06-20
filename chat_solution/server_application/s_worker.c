@@ -1,15 +1,20 @@
 /*****************************************************************//**
  * \file   s_worker.c
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   September 2024
  *********************************************************************/
-#include "pch.h"
+#include <Windows.h>
+#include <stdio.h>
+
 #include "s_worker.h"
+#include "s_shared.h"
+
+extern volatile BOOL g_bServerState;
 
 //NOTE: Calling function will need to release users mutex.
-//NOTE: on success, S_OK returned. on failure, SRV_SHUTDOWN_ERR returned - 
+//NOTE: on success, S_OK returned. on failure, SRV_SHUTDOWN_ERR returned -
 //if the mutex cannot be locked with an infinite time limit, a fatal error
 //has occured.
 static HRESULT
@@ -23,9 +28,7 @@ UsersTableWriter(PUSER pUser)
 
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+		DEBUG_ERROR("WaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -41,9 +44,7 @@ UsersTableWriter(PUSER pUser)
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
 			ReleaseMutex(pUserWriteMutex);
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+			DEBUG_ERROR("WaitForSingleObject failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 	}
@@ -51,7 +52,7 @@ UsersTableWriter(PUSER pUser)
 	return S_OK;
 }
 
-//NOTE: Called when 
+//NOTE: Called when
 static HRESULT
 WorkerWSARecv(PUSER pUser)
 {
@@ -64,8 +65,7 @@ WorkerWSARecv(PUSER pUser)
 		iResult = WSAGetLastError();
 		if (WSA_IO_PENDING != iResult)
 		{
-			ThreadPrintErrorWSA(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__);
+			DEBUG_ERROR("WSARecv failed");
 			g_bServerState = STOP;
 			return CLIENT_REMOVE_ERR;
 		}
@@ -75,7 +75,7 @@ WorkerWSARecv(PUSER pUser)
 }
 
 //WARNING: Assumes packet header length = 7 and contains correct lengths of
-// wide char strings one and two. This does not mean that 
+// wide char strings one and two. This does not mean that
 static HRESULT
 WorkerPartialRecv(PUSER pUser)
 {
@@ -85,14 +85,14 @@ WorkerPartialRecv(PUSER pUser)
 	if (pUser->m_RecvMsg.m_dwBytesMovedTotal < HEADER_LEN)
 	{
 		pUser->m_RecvMsg.m_wsaBuffer[HEADER_INDEX].buf =
-			(PCHAR)&(pUser->m_RecvMsg.m_Header) + 
+			(PCHAR)&(pUser->m_RecvMsg.m_Header) +
 			pUser->m_RecvMsg.m_dwBytesMovedTotal;
 		pUser->m_RecvMsg.m_wsaBuffer[HEADER_INDEX].len = HEADER_LEN -
 			pUser->m_RecvMsg.m_dwBytesMovedTotal;
-		
+
 		return WorkerWSARecv(pUser);
 	}
-	
+
 	//NOTE: This is how the TYPE/STYPE/OPCODE will be analyzed as well.
 	//WARNING: Don't access the data fields here just yet.
 	WORD wLenOne = ntohs(pChatMsg->wLenOne);
@@ -192,7 +192,7 @@ WorkerPartialSend(PMSGHOLDER pMsgHolder, SOCKET ClientSocket,
 		iResult = WSAGetLastError();
 		if (WSA_IO_PENDING != iResult)
 		{
-			ThreadPrintErrorWSA(StdErrMutex, (PCHAR)__func__, __LINE__);
+			DEBUG_WSAERROR("WSASend failed");
 			g_bServerState = STOP;
 			return CLIENT_REMOVE_ERR;
 		}
@@ -212,19 +212,17 @@ CheckforUser(PUSER pUser, PCHATMSG pChatMsg)
 		return ManageMsgQueueAdd(pUser, TYPE_FAILURE, STYPE_EMPTY,
 			REJECT_SRV_FULL, 0, 0, NULL, NULL);
 	}
-	
+
 	WORD wResult = HashTableNewEntry(pUser->m_pUsers->m_pUsersHTable, pUser,
 		pChatMsg->pszDataOne, pChatMsg->wLenOne);
 	ReleaseMutex(pUser->m_pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
 
-	if (EXIT_FAILURE == wResult)
+	if (SUCCESS != wResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "HashTableNewEntry()");
+		DEBUG_ERROR("HashTableNewEntry failed");
 		return SRV_SHUTDOWN_ERR;
 	}
-	
+
 	if (DUPLICATE_KEY == wResult)
 	{
 		//NOTE: User is already present.
@@ -242,9 +240,7 @@ CheckforUser(PUSER pUser, PCHATMSG pChatMsg)
 
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+		DEBUG_ERROR("WaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -288,9 +284,7 @@ LoginBroadcast(PUSER pSendingUser, WORD wMsgLen, PWCHAR pszMsg)
 					{
 						//NOTE: Error information will be printed, but the other
 						// client's IOCP packet can handle the failure.
-						ThreadPrintErrorCustom(
-							pSendingUser->m_haSharedHandles[STD_ERR_MUTEX],
-							(PCHAR)__func__, __LINE__, "ManageMsgQueueAdd()");
+						DEBUG_ERROR("ManageMsgQueueAdd failed");
 						return hResult;
 					}
 				}
@@ -325,9 +319,7 @@ HandleClientRegistration(PUSER pUser, PCHATMSG pChatMsg)
 	HRESULT hResult = UsersTableWriter(pUser);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableWriter()");
+		DEBUG_ERROR("UsersTableWriter failed");
 		return hResult;
 	}
 
@@ -336,9 +328,7 @@ HandleClientRegistration(PUSER pUser, PCHATMSG pChatMsg)
 	hResult = CheckforUser(pUser, pChatMsg);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "CheckforUser()");
+		DEBUG_ERROR("CheckforUser failed");
 		return hResult;
 	}
 
@@ -355,9 +345,7 @@ SendOtherClientMessage(PUSER pUser, PUSER pTargetUser, PCHATMSG pChatMsg)
 
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+		DEBUG_ERROR("WaitForSingleObject failed");
 		return hResult;
 	}
 
@@ -373,9 +361,7 @@ UsersTableReaderStart(PUSERS pUsers)
 
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-		ThreadPrintErrorCustom(
-			pUsers->m_haUsersHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+		DEBUG_ERROR("WaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -385,9 +371,7 @@ UsersTableReaderStart(PUSERS pUsers)
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
 		ReleaseMutex(pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
-		ThreadPrintErrorCustom(
-			pUsers->m_haUsersHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+		DEBUG_ERROR("WaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -399,9 +383,7 @@ UsersTableReaderStart(PUSERS pUsers)
 		ReleaseMutex(pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
 		ReleaseSemaphore(
 			pUsers->m_haUsersHandles[USERS_READ_SEMAPHORE], 1, NULL);
-		ThreadPrintErrorCustom(
-			pUsers->m_haUsersHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "ResetEvent()");
+		DEBUG_ERROR("ResetEvent failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -422,9 +404,7 @@ UsersTableReaderFinish(PUSERS pUsers)
 		if (FALSE == SetEvent(
 			pUsers->m_haUsersHandles[READERS_DONE_EVENT]))
 		{
-			ThreadPrintErrorCustom(
-				pUsers->m_haUsersHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "SetEvent()");
+			DEBUG_ERROR("SetEvent failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 	}
@@ -471,9 +451,7 @@ HandleClientMessage(PUSER pUser, PCHATMSG pChatMsg)
 	HRESULT hResult = UsersTableReaderStart(pUser->m_pUsers);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableReaderStart()");
+		DEBUG_ERROR("UsersTableReaderStart failed");
 		return hResult;
 	}
 
@@ -493,14 +471,11 @@ HandleClientMessage(PUSER pUser, PCHATMSG pChatMsg)
 
 	if (S_OK != hResult)
 	{
-		ThreadPrintError( pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("SendOtherClientMessage failed");
 
 		if (S_OK != UsersTableReaderFinish(pUser->m_pUsers))
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "UsersTableReaderFinish()");
+			DEBUG_ERROR("UsersTableReaderFinish failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 
@@ -511,9 +486,7 @@ HandleClientMessage(PUSER pUser, PCHATMSG pChatMsg)
 
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableReaderFinish()");
+		DEBUG_ERROR("UsersTableReaderFinish failed");
 	}
 
 	return hResult;
@@ -527,9 +500,7 @@ LogoutBroadcast(PUSERS pUsers, WORD wUserlen, PWCHAR pszUsername, WORD wMsgLen,
 	HRESULT hResult = UsersTableReaderStart(pUsers);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUsers->m_haUsersHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableReaderStart()");
+		DEBUG_ERROR("UsersTableReaderStart failed");
 		return hResult;
 	}
 
@@ -558,15 +529,11 @@ LogoutBroadcast(PUSERS pUsers, WORD wUserlen, PWCHAR pszUsername, WORD wMsgLen,
 				{
 					//NOTE: Error information will be printed, but the other
 					// client's IOCP packet can handle the failure.
-					ThreadPrintErrorCustom(
-						pUsers->m_haUsersHandles[STD_ERR_MUTEX],
-						(PCHAR)__func__, __LINE__, "ManageMsgQueueAdd()");
+					DEBUG_ERROR("ManageMsgQueueAdd failed");
 
 					if (S_OK != UsersTableReaderFinish(pUser->m_pUsers))
 					{
-						ThreadPrintErrorCustom(
-							pUser->m_haSharedHandles[STD_ERR_MUTEX],
-							(PCHAR)__func__, __LINE__, "UsersTableReaderFinish()");
+						DEBUG_ERROR("UsersTableReaderFinish failed");
 					}
 
 					return SRV_SHUTDOWN_ERR;
@@ -579,9 +546,7 @@ LogoutBroadcast(PUSERS pUsers, WORD wUserlen, PWCHAR pszUsername, WORD wMsgLen,
 
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUsers->m_haUsersHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableReaderFinish()");
+		DEBUG_ERROR("UsersTableReaderFinish failed");
 	}
 	return hResult;
 }
@@ -598,12 +563,10 @@ HandleLogout(PUSER pUser)
 		OPCODE_ACK, 0, 0, NULL, NULL);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "ManageMsgQueueAdd()");
+		DEBUG_ERROR("ManageMsgQueueAdd failed");
 		return hResult;
 	}
-	
+
 	DWORD dwWaitResult = 0;
 	//NOTE: Waiting for m_plSendOccuring to go to zero.
 	if (pUser->m_plSendOccuring != 0)
@@ -613,9 +576,7 @@ HandleLogout(PUSER pUser)
 
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+			DEBUG_ERROR("WaitForSingleObject failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 	}
@@ -624,9 +585,7 @@ HandleLogout(PUSER pUser)
 	hResult = UsersTableWriter(pUser);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableWriter()");
+		DEBUG_ERROR("UsersTableWriter failed");
 		return hResult;
 	}
 
@@ -637,9 +596,7 @@ HandleLogout(PUSER pUser)
 	if (NULL == pTempUser)
 	{
 		UserFreeFunction((PVOID)pUser);
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "HashTableDestroyEntry()");
+		DEBUG_ERROR("HashTableDestroyEntry failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -664,7 +621,7 @@ CreateList(PHASHTABLE pUsersTable)
 
 	if (NULL == pUserList)
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("HeapAlloc failed");
 		return NULL;
 	}
 
@@ -691,10 +648,8 @@ CreateList(PHASHTABLE pUsersTable)
 					rsLengthLeft,
 					pUser->m_caUsername))
 				{
-					ThreadPrintErrorCustom(
-						pUser->m_haSharedHandles[STD_ERR_MUTEX],
-						(PCHAR)__func__, __LINE__, "wcscpy_s()");
-					MyHeapFree(GetProcessHeap(), NO_OPTION, pUserList,
+					DEBUG_ERROR("wcscpy_s failed");
+					ZeroingHeapFree(GetProcessHeap(), NO_OPTION, (PVOID)&pUserList,
 						(1 + ((MAX_UNAME_LEN + 1) * pUsersTable->m_wSize *
 							sizeof(WCHAR))));
 					return NULL;
@@ -726,9 +681,7 @@ HandleList(PUSER pUser, PCHATMSG pChatMsg)
 	HRESULT hResult = UsersTableReaderStart(pUser->m_pUsers);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableReaderStart()");
+		DEBUG_ERROR("UsersTableReaderStart failed");
 		return hResult;
 	}
 
@@ -736,15 +689,11 @@ HandleList(PUSER pUser, PCHATMSG pChatMsg)
 
 	if (NULL == pUserList)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "CreateList()");
+		DEBUG_ERROR("CreateList failed");
 
 		if (S_OK != UsersTableReaderFinish(pUser->m_pUsers))
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "UsersTableReaderFinish()");
+			DEBUG_ERROR("UsersTableReaderFinish failed");
 		}
 		return SRV_SHUTDOWN_ERR;
 	}
@@ -754,22 +703,18 @@ HandleList(PUSER pUser, PCHATMSG pChatMsg)
 		pUser->m_pUsers->m_pUsersHTable->m_wSize * sizeof(WCHAR))),
 		&stUserListLen)))
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "StringCchLengthW()");
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pUserList, (1 +
+		DEBUG_ERROR("StringCchLengthW failed");
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, (PVOID)&pUserList, (1 +
 			((MAX_UNAME_LEN + 1) * pUser->m_pUsers->m_pUsersHTable->m_wSize *
 				sizeof(WCHAR))));
 
 		if (S_OK != UsersTableReaderFinish(pUser->m_pUsers))
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "UsersTableReaderFinish()");
+			DEBUG_ERROR("UsersTableReaderFinish failed");
 		}
 		return SRV_SHUTDOWN_ERR;
 	}
-	
+
 //NOTE: Current limitation is that packet data lens are max 65535 chars in len,
 // more design decisions would need to be made prior to increasing that size.
 // This means that even though the set limit of users is 65535, it's possible
@@ -779,21 +724,17 @@ HandleList(PUSER pUser, PCHATMSG pChatMsg)
 	hResult = ManageMsgQueueAdd(pUser, TYPE_LIST, STYPE_EMPTY, OPCODE_RES,
 		stUserListLen, 0, pUserList, NULL);
 #pragma warning(pop)
-	MyHeapFree(GetProcessHeap(), NO_OPTION, pUserList, (1 +
+	ZeroingHeapFree(GetProcessHeap(), NO_OPTION, (PVOID)&pUserList, (1 +
 		((MAX_UNAME_LEN + 1) * pUser->m_pUsers->m_pUsersHTable->m_wSize *
 			sizeof(WCHAR))));
 
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "ManageMsgQueueAdd()");
+		DEBUG_ERROR("ManageMsgQueueAdd failed");
 
 		if (S_OK != UsersTableReaderFinish(pUser->m_pUsers))
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "UsersTableReaderFinish()");
+			DEBUG_ERROR("UsersTableReaderFinish failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 
@@ -804,9 +745,7 @@ HandleList(PUSER pUser, PCHATMSG pChatMsg)
 
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableReaderFinish()");
+		DEBUG_ERROR("UsersTableReaderFinish failed");
 	}
 
 	return hResult;
@@ -841,9 +780,7 @@ CreateBroadcast(PUSER pSendingUser, WORD wMsgLen, PWCHAR pszMsg)
 				{
 					//NOTE: Error information will be printed, but the other
 					// client's IOCP packet can handle the failure.
-					ThreadPrintErrorCustom(
-						pSendingUser->m_haSharedHandles[STD_ERR_MUTEX],
-						(PCHAR)__func__, __LINE__, "ManageMsgQueueAdd()");
+					DEBUG_ERROR("ManageMsgQueueAdd failed");
 				}
 			}
 		}
@@ -866,9 +803,7 @@ HandleBroadcast(PUSER pUser, PCHATMSG pChatMsg)
 	HRESULT hResult = UsersTableReaderStart(pUser->m_pUsers);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableReaderStart()");
+		DEBUG_ERROR("UsersTableReaderStart failed");
 		return hResult;
 	}
 
@@ -878,9 +813,7 @@ HandleBroadcast(PUSER pUser, PCHATMSG pChatMsg)
 
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableReaderFinish()");
+		DEBUG_ERROR("UsersTableReaderFinish failed");
 		return hResult;
 	}
 
@@ -940,7 +873,7 @@ WorkerRecvOP(PUSER pUser, DWORD dwBytesTransferred)
 							// means that the packet has data lens of 0.
 		}
 	}
-	
+
 	//NOTE: Get the message copied onto the stack for handling, reset receiver.
 	CHATMSG ChatMsgCopy = { 0 };
 	WCHAR pszDataOne[BUFF_SIZE + 1] = { 0 };
@@ -958,8 +891,7 @@ WorkerRecvOP(PUSER pUser, DWORD dwBytesTransferred)
 			pUser->m_RecvMsg.m_pBodyBufferOne, ChatMsgCopy.wLenOne);
 		if (0 != eResult)
 		{
-			ThreadPrintErrorSupplied(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, eResult);
+            DEBUG_ERROR_SUPPLIED(eResult, "wmemcpy_s failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 		WstrNetToHost(pszDataOne, ChatMsgCopy.wLenOne);
@@ -972,8 +904,7 @@ WorkerRecvOP(PUSER pUser, DWORD dwBytesTransferred)
 			pUser->m_RecvMsg.m_pBodyBufferTwo, ChatMsgCopy.wLenTwo);
 		if (0 != eResult)
 		{
-			ThreadPrintErrorSupplied(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, eResult);
+            DEBUG_ERROR_SUPPLIED(eResult, "wmemcpy_s failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 		WstrNetToHost(pszDataTwo, ChatMsgCopy.wLenTwo);
@@ -1001,9 +932,7 @@ WorkerRecvOP(PUSER pUser, DWORD dwBytesTransferred)
 		hResult = HandleClientRegistration(pUser, &ChatMsgCopy);
 		if (S_OK != hResult)
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "CheckforUser()");
+			DEBUG_ERROR("CheckforUser failed");
 			return hResult;
 		}
 	}
@@ -1012,13 +941,11 @@ WorkerRecvOP(PUSER pUser, DWORD dwBytesTransferred)
 		hResult = HandleClientPacket(pUser, &ChatMsgCopy);
 		if (S_OK != hResult)
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "CheckforUser()");
+			DEBUG_ERROR("CheckforUser failed");
 			return hResult;
 		}
 	}
-	
+
 	return S_OK;
 }
 
@@ -1029,9 +956,7 @@ CheckSendQueue(PUSER pUser)
 
 	if (NULL == pMsgHolder)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+		DEBUG_ERROR("WaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -1044,13 +969,12 @@ CheckSendQueue(PUSER pUser)
 		iResult = WSAGetLastError();
 		if (WSA_IO_PENDING != iResult)
 		{
-			ThreadPrintErrorWSA(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__);
+			DEBUG_WSAERROR("WSASend failed");
 			return CLIENT_REMOVE_ERR;
 		}
 	}
 
-	return S_OK;	
+	return S_OK;
 }
 
 static HRESULT
@@ -1061,24 +985,20 @@ ManageSendQueue(PUSER pUser)
 	DWORD dwWaitResult = WaitForSingleObject(
 		pUser->m_haSharedHandles[SEND_MUTEX], INFINITE);
 	InterlockedDecrement(&pUser->m_plThreadsWaiting);
-	
+
 	//NOTE: Maybe handle wait abandoned differently than wait failed in the
 	// future.
-	if (WAIT_OBJECT_0 != dwWaitResult) 
+	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+		DEBUG_ERROR("WaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
-	
+
 	//NOTE: The full send was successful. Remove memory allocated for this send.
-	if (EXIT_FAILURE == QueuePopRemove(pUser->m_SendMsgQueue, FreeMsg))
+	if (SUCCESS != QueuePopRemove(pUser->m_SendMsgQueue, FreeMsg))
 	{
 		ReleaseMutex(pUser->m_haSharedHandles[SEND_MUTEX]);
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "QueuePopRemove()");
+		DEBUG_ERROR("QueuePopRemove failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -1089,23 +1009,20 @@ ManageSendQueue(PUSER pUser)
 		InterlockedDecrement(&pUser->m_plSendOccuring);
 		BOOL bResult = SetEvent(pUser->m_haSharedHandles[SEND_DONE_EVENT]);
 		ReleaseMutex(pUser->m_haSharedHandles[SEND_MUTEX]);
-		if (WIN_EXIT_FAILURE == bResult)
+		if (FALSE == bResult)
 		{
-			ThreadPrintError(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__);
+			DEBUG_ERROR("SetEvent failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 		return S_OK;
 	}
 
-	HRESULT hResult = CheckSendQueue(pUser); 
+	HRESULT hResult = CheckSendQueue(pUser);
 	ReleaseMutex(pUser->m_haSharedHandles[SEND_MUTEX]);
 
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorWSA(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
+		DEBUG_WSAERROR("WSASend failed");
 		return hResult;
 	}
 
@@ -1121,8 +1038,7 @@ WorkerSendOP(PUSER pUser, DWORD dwBytesTransferred)
 	PMSGHOLDER pSendHolder = QueuePeek(pUser->m_SendMsgQueue);
 	if (NULL == pSendHolder)
 	{
-		ThreadPrintErrorCustom(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "QueuePeek()");
+		DEBUG_ERROR("QueuePeek failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -1133,8 +1049,7 @@ WorkerSendOP(PUSER pUser, DWORD dwBytesTransferred)
 			pUser->m_haSharedHandles[STD_ERR_MUTEX]);
 		if (S_OK != hResult)
 		{
-			ThreadPrintErrorCustom(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "WorkerPartialSend()");
+			DEBUG_ERROR("WorkerPartialSend failed");
 			return hResult;
 		}
 
@@ -1145,14 +1060,13 @@ WorkerSendOP(PUSER pUser, DWORD dwBytesTransferred)
 	hResult = ManageSendQueue(pUser);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "ManageSendQueue()");
+		DEBUG_ERROR("ManageSendQueue failed");
 
 		//TODO: should we keep this?
 		//NOTE: If the previous function failed and didn't decrement
 		// m_plSendOccuring, it is done here.
 		InterlockedExchange(&pUser->m_plSendOccuring, 0);
-		
+
 		return hResult;
 	}
 
@@ -1174,8 +1088,7 @@ WorkerSendOP(PUSER pUser, DWORD dwBytesTransferred)
 		iResult = WSAGetLastError();
 		if (WSA_IO_PENDING != iResult)
 		{
-			ThreadPrintErrorWSA(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__);
+			DEBUG_WSAERROR("WSARecv failed");
 			g_bServerState = STOP;
 			return CLIENT_REMOVE_ERR;
 		}
@@ -1191,9 +1104,7 @@ ClientShutdown(PUSER pUser)
 	HRESULT hResult = UsersTableWriter(pUser);
 	if (S_OK != hResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "UsersTableWriter()");
+		DEBUG_ERROR("UsersTableWriter failed");
 		return hResult;
 	}
 
@@ -1205,9 +1116,7 @@ ClientShutdown(PUSER pUser)
 
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+			DEBUG_ERROR("WaitForSingleObject failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 	}
@@ -1218,9 +1127,7 @@ ClientShutdown(PUSER pUser)
 
 	if (NULL == pTempUser)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "HashTableDestroyEntry()");
+		DEBUG_ERROR("HashTableDestroyEntry failed");
 		UserFreeFunction((PVOID)pUser);
 		return SRV_SHUTDOWN_ERR;
 	}
@@ -1248,8 +1155,7 @@ HandleClientShutdown(PUSER pUser, PMSGHOLDER pMsgHolder)
 			if (NOT_DESTROYING == InterlockedCompareExchange(
 				&pUser->m_plBeingDestroyed, DESTROYING, NOT_DESTROYING))
 			{
-				ThreadCustomConsoleWrite(pUser->m_haSharedHandles[STD_OUT_MUTEX],
-					L"WorkerThread(): Removing client due to: socket "
+				CustomConsoleWrite(L"WorkerThread(): Removing client due to: socket "
 					"failure.\n", 76);
 				//NOTE: The previous value was zero, so we'll commence shutdown
 				//here.
@@ -1268,12 +1174,10 @@ HandleClientShutdown(PUSER pUser, PMSGHOLDER pMsgHolder)
 			{
 				//NOTE: If the send operation didn't transfer any bytes, we'll
 				// decrement that send isn't occuring anymore.
-				if (WIN_EXIT_FAILURE == SetEvent(
+				if (0 == SetEvent(
 					pUser->m_haSharedHandles[SEND_DONE_EVENT]))
 				{
-					ThreadPrintError(
-						pUser->m_haSharedHandles[STD_ERR_MUTEX],
-						(PCHAR)__func__, __LINE__);
+					DEBUG_ERROR("SetEvent failed");
 					return SRV_SHUTDOWN_ERR;
 				}
 
@@ -1290,9 +1194,7 @@ HandleClientShutdown(PUSER pUser, PMSGHOLDER pMsgHolder)
 
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+			DEBUG_ERROR("WaitForSingleObject failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 
@@ -1304,9 +1206,7 @@ HandleClientShutdown(PUSER pUser, PMSGHOLDER pMsgHolder)
 
 		if (NULL == pTempUser)
 		{
-			ThreadPrintErrorCustom(
-				pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "HashTableDestroyEntry()");
+			DEBUG_ERROR("HashTableDestroyEntry failed");
 			UserFreeFunction((PVOID)pUser);
 			return SRV_SHUTDOWN_ERR;
 		}
@@ -1337,24 +1237,24 @@ WorkerThread(PVOID pParam)
 		if (IOCP_SHUTDOWN == pulUserHolder)
 		{
 			//NOTE: The server has issued shutdown packets to the IOCP handle.
-			return EXIT_SUCCESS;
+			return SUCCESS;
 		}
 
 		PUSER pUser = (PUSER)pulUserHolder;
 		//NOTE: lpOverLapped is the first member of our MSGHOLDER struct.
 		PMSGHOLDER pMsgHolder = (PMSGHOLDER)lpOverLapped;
 
-		if ((WIN_EXIT_FAILURE == bResult) || (0 == dwBytesTransferred))
+		if ((FALSE == bResult) || (0 == dwBytesTransferred))
 		{
 			if (SRV_SHUTDOWN_ERR == HandleClientShutdown(pUser, pMsgHolder))
 			{
 				//NOTE: Thread print dereference could cause errors.
-				PrintError((PCHAR)__func__, __LINE__);
-				return EXIT_FAILURE;
+				DEBUG_ERROR("GetQueuedCompletionStatus failed");
+				return ERR_GENERIC;
 			}
 			continue;
 		}
-		
+
 		//NOTE: RecvOP and SendOP contain most of server functionality.
 		if (RECV_OP == pMsgHolder->m_iOperationType)
 		{
@@ -1377,35 +1277,29 @@ WorkerThread(PVOID pParam)
 
 		case CLIENT_REMOVE_ERR:
 			//NOTE: Error that requires client shutdown but not server shutdown.
-			ThreadCustomConsoleWrite(pUser->m_haSharedHandles[STD_OUT_MUTEX],
-				L"WorkerThread(): Removing client due to: CLIENT_REMOVE_ERR",
+			CustomConsoleWrite(L"WorkerThread(): Removing client due to: CLIENT_REMOVE_ERR",
 				58);
 			if (SRV_SHUTDOWN_ERR == HandleClientShutdown(pUser, pMsgHolder))
 			{
-				ThreadPrintError(
-					pUser->m_haSharedHandles[STD_ERR_MUTEX],
-					(PCHAR)__func__, __LINE__);
-				return EXIT_FAILURE;
+				DEBUG_ERROR("HandleClientShutdown failed");
+				return ERR_GENERIC;
 			}
 			break;
 
 		case SRV_SHUTDOWN_ERR:
 			//NOTE: Error that requires server shutdown.
-			ThreadPrintErrorCustom(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "WorkerThread(): Server shutting "
+			DEBUG_PRINT("WorkerThread(): Server shutting "
 				"down");
 			g_bServerState = STOP;
 			break;
 
 		default:
-			ThreadPrintErrorCustom(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "WorkerThread(): Unknown error, "
-				"server shutting down");
+			DEBUG_PRINT("WorkerThread(): Unknown error, server shutting down");
 			g_bServerState = STOP;
 			break;
 		}
 	}
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 //End of file

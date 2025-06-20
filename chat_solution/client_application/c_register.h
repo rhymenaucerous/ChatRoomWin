@@ -1,7 +1,7 @@
 #pragma once
-#include "pch.h"
-#include "c_shared.h"
-#include "c_messages.h"
+
+#include <Windows.h>
+#include <stdio.h>
 
 HRESULT
 HandleRegistration(PWSTR pszClientName, SIZE_T wNameLen,

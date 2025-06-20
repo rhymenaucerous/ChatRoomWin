@@ -5,8 +5,15 @@
  * \author chris
  * \date   August 2024
  *********************************************************************/
-#include "pch.h"
+#include <Windows.h>
+#include <stdio.h>
+
+#include "s_shared.h"
 #include "s_listen.h"
+#include "s_worker.h"
+#include "../client_application/Queue.h"
+
+extern volatile BOOL g_bServerState;
 
 VOID
 ThreadCount(PSERVERCHATARGS pServerArgs)
@@ -40,7 +47,7 @@ CreatePrintMutexes(PSERVERCHATARGS pServerArgs)
 	if ((NULL == pServerArgs->m_haSharedHandles[STD_OUT_MUTEX]) ||
 		(NULL == pServerArgs->m_haSharedHandles[STD_ERR_MUTEX]))
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("CreateMutexW failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -53,32 +60,30 @@ IOCPSetUp(PSERVERCHATARGS pServerArgs)
 {
 	if (S_OK != CreatePrintMutexes(pServerArgs))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "CreatePrintMutexes()");
+		DEBUG_PRINT("CreatePrintMutexes failed");
 		return SRV_SHUTDOWN_ERR;
 	}
-	
-	if (EXIT_FAILURE == NetSetUp())
+
+	if (SUCCESS != NetSetUp())
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "NetSetUp()");
+		DEBUG_PRINT("NetSetUp failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
 	pServerArgs->m_ListenSocket = NetListen(pServerArgs->m_pszBindIP,
 		pServerArgs->m_pszBindPort);
-
 	if (INVALID_SOCKET == pServerArgs->m_ListenSocket)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "NetListen()");
+		DEBUG_PRINT("NetListen failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
 	//NOTE: The listening socket is now set up, let's create IOCP handle.
 	pServerArgs->m_haSharedHandles[IOCP_HANDLE] = CreateIoCompletionPort(
 		INVALID_HANDLE_VALUE, NULL, NO_OPTION, pServerArgs->m_dwThreadCount);
-
 	if (NULL == pServerArgs->m_haSharedHandles[IOCP_HANDLE])
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_PRINT("CreateIoCompletionPort failed");
 		NetCleanup(pServerArgs->m_ListenSocket, INVALID_SOCKET);
 		return SRV_SHUTDOWN_ERR;
 	}
@@ -93,10 +98,9 @@ ThreadSetUp(PSERVERCHATARGS pServerArgs)
 {
 	pServerArgs->m_phThreads = HeapAlloc(GetProcessHeap(),
 		HEAP_ZERO_MEMORY, pServerArgs->m_dwThreadCount * sizeof(HANDLE));
-
 	if (NULL == pServerArgs->m_phThreads)
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("HeapAlloc failed");
 		return E_OUTOFMEMORY;
 	}
 
@@ -107,13 +111,12 @@ ThreadSetUp(PSERVERCHATARGS pServerArgs)
 		pServerArgs->m_phThreads[iCounter] = CreateThread(NULL, NO_OPTION,
 			WorkerThread, (PVOID)pServerArgs->m_haSharedHandles[IOCP_HANDLE],
 			NO_OPTION, NULL);
-
 		//NOTE: If any of the CreateThread() iterations fail, we need to ensure
 		//the termination of those other threads.
 		if (NULL == pServerArgs->m_phThreads[iCounter])
 		{
 			g_bServerState = STOP;
-			PrintError((PCHAR)__func__, __LINE__);\
+			DEBUG_ERROR("CreateThread failed");
 
 			for (DWORD iCounter2 = 0; iCounter2 < iCounter; iCounter2++)
 			{
@@ -126,13 +129,12 @@ ThreadSetUp(PSERVERCHATARGS pServerArgs)
 				{
 					//NOTE: Simply print error info, try to shutdown other
 					// threads.
-					PrintError((PCHAR)__func__, __LINE__);
+					DEBUG_ERROR("PostQueuedCompletionStatus failed");
 				}
 			}
 
 			DWORD dwResult = WaitForMultipleObjects(iCounter,
 				pServerArgs->m_phThreads, TRUE, INFINITE);
-
 			//NOTE: Waiting for threads to close.
 			switch (dwResult)
 			{
@@ -140,13 +142,12 @@ ThreadSetUp(PSERVERCHATARGS pServerArgs)
 				return SRV_SHUTDOWN_ERR;
 
 			default:
-				PrintErrorCustom((PCHAR)__func__, __LINE__,
-					"WaitForMultipleObjects()");
+				DEBUG_ERROR("WaitForMultipleObjects failed");
 				return SRV_SHUTDOWN_ERR;
 			}
 		}
 	}
-	
+
 	return S_OK;
 }
 
@@ -162,15 +163,12 @@ ThreadShutDown(PSERVERCHATARGS pServerArgs)
 			NULL);
 		if (FALSE == bResult)
 		{
-			ThreadPrintError(pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__);
+			DEBUG_ERROR("PostQueuedCompletionStatus failed");
 			bErrorOccured = TRUE;
 			//NOTE: no error return here as all the threads need to close
 			//either way.
 		}
 	}
-
-	//TODO: Determine if any errors will stop function from working.
 
 	DWORD dwResult = WaitForMultipleObjects(pServerArgs->m_dwThreadCount,
 		pServerArgs->m_phThreads, TRUE, INFINITE);
@@ -183,13 +181,12 @@ ThreadShutDown(PSERVERCHATARGS pServerArgs)
 
 	//NOTE: Any option except WAIT_OBJECT_0 means failure to close all threads.
 	default:
-		ThreadPrintError(pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("WaitForMultipleObjects failed");
 		bErrorOccured = TRUE;
 		break;
 	}
 
-	MyHeapFree(GetProcessHeap(), NO_OPTION, pServerArgs->m_phThreads,
+	ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pServerArgs->m_phThreads,
 		pServerArgs->m_dwThreadCount * sizeof(HANDLE));
 
 	if (bErrorOccured == FALSE)
@@ -207,32 +204,29 @@ CreateUsers(PSERVERCHATARGS pServerArgs)
 {
 	PUSERS pUsers = HeapAlloc(GetProcessHeap(),
 		HEAP_ZERO_MEMORY, sizeof(USERS));
-
 	if (NULL == pUsers)
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("HeapAlloc failed");
 		return NULL;
 	}
 
 	pUsers->m_dwMaxClients = pServerArgs->m_dwMaxClients;
 	//WARNING: Max clients set to 65535, so conversion to WORD type for entry
 	// into the following function does not result in any data loss.
-	pUsers->m_pUsersHTable = HashTableInit((WORD)pServerArgs->m_dwMaxClients, NULL);
-
-	if (NULL == pUsers->m_pUsersHTable)
+    if (SUCCESS != HashTableInit(&pUsers->m_pUsersHTable,
+                                 (WORD)pServerArgs->m_dwMaxClients, NULL))
 	{
-		PrintError((PCHAR)__func__, __LINE__);
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pUsers, sizeof(USERS));
+		DEBUG_PRINT("HashTableInit failed");
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pUsers, sizeof(USERS));
 		return NULL;
 	}
 
 
-	pUsers->m_pNewUsersTable = HashTableInit((WORD)pServerArgs->m_dwMaxClients, NULL);
-
-	if (NULL == pUsers->m_pNewUsersTable)
+    if (SUCCESS != HashTableInit(&pUsers->m_pNewUsersTable,
+                                 (WORD)pServerArgs->m_dwMaxClients, NULL))
 	{
-		PrintError((PCHAR)__func__, __LINE__);
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pUsers, sizeof(USERS));
+		DEBUG_PRINT("HashTableInit failed");
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pUsers, sizeof(USERS));
 		HashTableDestroy(pUsers->m_pUsersHTable, NULL);
 		return NULL;
 	}
@@ -248,7 +242,7 @@ CreateUsers(PSERVERCHATARGS pServerArgs)
 	//be reading initially.
 	pUsers->m_haUsersHandles[USERS_READ_SEMAPHORE] = CreateSemaphoreW(NULL,
 		pServerArgs->m_dwMaxClients, pServerArgs->m_dwMaxClients, NULL);
-	//NOTE: Event will auto reset after releasing a thread 
+	//NOTE: Event will auto reset after releasing a thread
 	pUsers->m_haUsersHandles[READERS_DONE_EVENT] = CreateEventW(NULL, FALSE,
 		FALSE, NULL);
 
@@ -257,8 +251,8 @@ CreateUsers(PSERVERCHATARGS pServerArgs)
 		(NULL == pUsers->m_haUsersHandles[USERS_READ_SEMAPHORE]) ||
 		(NULL == pUsers->m_haUsersHandles[READERS_DONE_EVENT]))
 	{
-		PrintError((PCHAR)__func__, __LINE__);
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pUsers, sizeof(USERS));
+		DEBUG_ERROR("CreateMutexW failed");
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pUsers, sizeof(USERS));
 		HashTableDestroy(pUsers->m_pUsersHTable, NULL);
 		HashTableDestroy(pUsers->m_pNewUsersTable, NULL);
 		return NULL;
@@ -275,11 +269,9 @@ CreateUser(PSERVERCHATARGS pServerArgs, PUSERS pUsers, SOCKET ClientSocket)
 {
 	PUSER pUser = HeapAlloc(GetProcessHeap(),
 		HEAP_ZERO_MEMORY, sizeof(USER));
-
 	if (NULL == pUser)
 	{
-		ThreadPrintError(pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("HeapAlloc failed");
 		return NULL;
 	}
 
@@ -293,16 +285,9 @@ CreateUser(PSERVERCHATARGS pServerArgs, PUSERS pUsers, SOCKET ClientSocket)
 	if ((NULL == pUser->m_haSharedHandles[SEND_DONE_EVENT])  ||
 		(NULL == pUser->m_haSharedHandles[SEND_MUTEX]))
 	{
-		ThreadPrintError(pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
-
-		if (WIN_EXIT_FAILURE == MyHeapFree(GetProcessHeap(), NO_OPTION, pUser,
-			sizeof(USER)))
-		{
-			ThreadPrintErrorCustom(
-				pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "MyHeapFree()");
-		}
+		DEBUG_ERROR("CreateMutexW failed");
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pUser,
+			sizeof(USER));
 
 		return NULL;
 	}
@@ -311,16 +296,10 @@ CreateUser(PSERVERCHATARGS pServerArgs, PUSERS pUsers, SOCKET ClientSocket)
 
 	if (NULL == pUser->m_SendMsgQueue)
 	{
-		ThreadPrintError(pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("QueueInit failed");
 
-		if (WIN_EXIT_FAILURE == MyHeapFree(GetProcessHeap(), NO_OPTION, pUser,
-			sizeof(USER)))
-		{
-			ThreadPrintErrorCustom(
-				pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "MyHeapFree()");
-		}
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pUser,
+			sizeof(USER));
 
 		return NULL;
 	}
@@ -343,38 +322,35 @@ static VOID
 ServerShutDown(PSERVERCHATARGS pServerArgs, PUSERS pUsers)
 {
 	g_bServerState = STOP;
-	
+
 	if (S_OK != ThreadShutDown(pServerArgs))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "ThreadShutDown()");
+		DEBUG_PRINT("ThreadShutDown failed");
 	}
 
 	if (FALSE == CloseHandle(pServerArgs->m_haSharedHandles[IOCP_HANDLE]))
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_PRINT("CloseHandle failed");
 	}
 
-	if (EXIT_FAILURE == HashTableDestroy(pUsers->m_pUsersHTable,
+	if (SUCCESS != HashTableDestroy(pUsers->m_pUsersHTable,
 		UserFreeFunction))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "HashTableDestroy()");
+		DEBUG_PRINT("HashTableDestroy failed");
 	}
 
-	if (EXIT_FAILURE == HashTableDestroy(pUsers->m_pNewUsersTable,
+	if (SUCCESS != HashTableDestroy(pUsers->m_pNewUsersTable,
 		UserFreeFunction))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "HashTableDestroy()");
+		DEBUG_PRINT("HashTableDestroy failed");
 	}
 
 	NetCleanup(pServerArgs->m_ListenSocket, INVALID_SOCKET);
 
 	//NOTE: All server processes have now been shutdown, now let's free the
 	// memory.
-	if (WIN_EXIT_FAILURE == MyHeapFree(GetProcessHeap(), NO_OPTION, pUsers,
-		sizeof(USERS)))
-	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "MyHeapFree()");
-	}
+	ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pUsers,
+		sizeof(USERS));
 
 	//NOTE: pServerArgs is freed in wmain.
 }
@@ -386,19 +362,17 @@ HRESULT
 ServerListen(PSERVERCHATARGS pServerArgs)
 {
 	PUSERS pUsers = CreateUsers(pServerArgs);
-
 	if (NULL == pUsers)
 	{
-		ThreadPrintErrorCustom(
-			pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "CreateUsers()");
+		DEBUG_PRINT("CreateUsers failed");
 		ServerShutDown(pServerArgs, pUsers);
 		return SRV_SHUTDOWN_ERR;
 	}
-	
+
 	while(CONTINUE == g_bServerState)
 	{
-		SOCKET ClientSocket = NetAccept(pServerArgs->m_ListenSocket);
+        SOCKET ClientSocket =
+            NetAccept(pServerArgs->m_ListenSocket, g_bServerState, NULL);
 
 		//NOTE: Errors that are not fatal are handled within NetAccept.
 		if (INVALID_SOCKET == ClientSocket)
@@ -406,9 +380,7 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 			//NOTE: The NetAccept fn can return INVALID_SOCKET if the server is
 			//shut down on purpose, if it should still be running, we want the
 			//diagnotic info printed.
-			ThreadPrintErrorWSA(
-				pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__);
+			DEBUG_WSAERROR("NetAccept failed");
 			ServerShutDown(pServerArgs, pUsers);
 			if (CONTINUE == g_bServerState)
 			{
@@ -418,12 +390,9 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 		}
 
 		PUSER pUser = CreateUser(pServerArgs, pUsers, ClientSocket);
-
 		if (NULL == pUser)
 		{
-			ThreadPrintErrorCustom(
-				pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "CreateUser()");
+			DEBUG_PRINT("CreateUser failed");
 			ServerShutDown(pServerArgs, pUsers);
 			return SRV_SHUTDOWN_ERR;
 		}
@@ -431,12 +400,9 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 		//NOTE: Client socket utilized for now as it will always be unique.
 		DWORD dwWaitResult = WaitForSingleObject(
 			pUsers->m_haUsersHandles[NEW_USERS_MUTEX], INFINITE);
-
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
-			ThreadPrintErrorCustom(
-				pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+			DEBUG_ERROR("WaitForSingleObject failed");
 			ReleaseMutex(pUsers->m_haUsersHandles[NEW_USERS_MUTEX]);
 			ServerShutDown(pServerArgs, pUsers);
 			return SRV_SHUTDOWN_ERR;
@@ -446,11 +412,9 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 			(PWCHAR)&(pUser->m_ClientSocket),
 			(sizeof(SOCKET) / sizeof(WCHAR)));
 		ReleaseMutex(pUsers->m_haUsersHandles[NEW_USERS_MUTEX]);
-		if (EXIT_FAILURE == wResult)
+		if (SUCCESS != wResult)
 		{
-			ThreadPrintErrorCustom(
-				pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "HashTableNewEntry()");
+			DEBUG_PRINT("HashTableNewEntry failed");
 			UserFreeFunction((PVOID)pUser);
 			ServerShutDown(pServerArgs, pUsers);
 			return SRV_SHUTDOWN_ERR;
@@ -462,9 +426,7 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 
 		if (NULL == hResult)
 		{
-			ThreadPrintErrorCustom(
-				pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, "CreateIoCompletionPort()");
+			DEBUG_ERROR("CreateIoCompletionPort failed");
 			ServerShutDown(pServerArgs, pUsers);
 			return SRV_SHUTDOWN_ERR;
 		}
@@ -482,16 +444,14 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 			iResult = WSAGetLastError();
 			if (WSA_IO_PENDING != iResult)
 			{
-				ThreadPrintErrorWSA(pServerArgs->m_haSharedHandles[STD_ERR_MUTEX],
-					(PCHAR)__func__, __LINE__);
+				DEBUG_WSAERROR("WSARecv failed");
 				ServerShutDown(pServerArgs, pUsers);
 				return SRV_SHUTDOWN_ERR;
 			}
 		}
 	}
-	
-	ThreadCustomConsoleWrite(pServerArgs->m_haSharedHandles[STD_OUT_MUTEX],
-		L"Server Shutting Down.\n", 23);
+
+	DEBUG_PRINT("Server Shutting Down.");
 	ServerShutDown(pServerArgs, pUsers);
 	return S_OK;
 }

@@ -6,18 +6,19 @@
  * \date   August 2024
  *********************************************************************/
 #pragma once
-#include "pch.h"
 
 //NOTE: s_shared.h will include the following libraries:
 //		They will not need to be added to each server source/heaeder file.
 //		The modular libraries are the same as in the client - if any changes
 //		are made, they should be made to both. So we'll keep them in the client
 //		folder.
-#include "../client_application/HashTable.h"
-#include "../client_application/HashTable.h"
-#include "../client_application/Networking.h"
+#include "../hashtable/hashtable.h"
+#include "../linkedlist/linkedlist.h"
+#include "../networking/networking.h"
 #include "../client_application/Messages.h"
 #include "../client_application/Queue.h"
+
+#define BUFF_SIZE 1024
 
 //NOTE: Design decision for reconsideration later.
 #define MAX_UNAME_LEN 10
@@ -112,6 +113,130 @@ typedef struct USERS {
 #define DESTROYING 0
 #define NOT_DESTROYING 1
 
+#ifndef CUSTOM_MACROS
+#define CUSTOM_MACROS
+
+#define NO_OPTION   0
+#define MAX_MSG_LEN 256
+
+#ifndef SINGLE_BUFFER
+#define SINGLE_BUFFER 1
+#endif
+
+typedef enum
+{
+    SUCCESS               = 0,  // Operation successful
+    ERR_INVALID_PARAM     = 1,  // Invalid parameter passed
+    ERR_MEMORY_ALLOCATION = 2,  // Memory allocation failure
+    ERR_FILE_NOT_FOUND    = 3,  // File not found
+    ERR_ACCESS_DENIED     = 4,  // Permission denied
+    ERR_TIMEOUT           = 5,  // Operation timed out
+    ERR_SIGNATURE         = 6,  // invalid signature
+    ERR_CRYPTO            = 7,  // ntstatus error desribes issue from bcrypt
+    ERR_MEM_FREE          = 8,  // error with heap freeing
+    ERR_SEND              = 9,  // error with heap freeing
+    ERR_RECV              = 10, // error with heap freeing
+    ERR_SURVEY            = 11, // error with heap freeing
+    ERR_PERM              = 12, // error with heap freeing
+    ERR_GENERIC           = 100 // Generic error
+} RETURNTYPE;
+
+#ifdef _DEBUG
+#pragma warning(disable : 4996) // Disable warning C4996 (deprecated functions)
+#define DEBUG_PRINT(fmt, ...)                                                  \
+    do                                                                         \
+    {                                                                          \
+        fprintf(stderr, "DEBUG: %s(): Line %d: " fmt "\n", __func__, __LINE__, \
+                __VA_ARGS__);                                                  \
+    } while (0)
+#define DEBUG_ERROR(fmt, ...)                                                  \
+    do                                                                         \
+    {                                                                          \
+        DWORD error_code = GetLastError();                                     \
+        char  error_message[256];                                              \
+        FormatMessageA(                                                        \
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,  \
+            error_code, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),             \
+            error_message, sizeof(error_message), NULL);                       \
+        fprintf(stderr, "DEBUG: %s(): Line %d:\nError %lu: %sNote: " fmt "\n", \
+                __func__, __LINE__, error_code, error_message, __VA_ARGS__);   \
+    } while (0)
+#define DEBUG_ERROR_SUPPLIED(error_code, fmt, ...)                             \
+    do                                                                         \
+    {                                                                          \
+        char error_message[256];                                               \
+        FormatMessageA(                                                        \
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,  \
+            error_code, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),             \
+            error_message, sizeof(error_message), NULL);                       \
+        fprintf(stderr, "DEBUG: %s(): Line %d:\nError %lu: %sNote: " fmt "\n", \
+                __func__, __LINE__, error_code, error_message, __VA_ARGS__);   \
+    } while (0)
+#define DEBUG_WSAERROR(fmt, ...)                                               \
+    do                                                                         \
+    {                                                                          \
+        int  wsa_error_code = WSAGetLastError();                               \
+        char error_message[256];                                               \
+        FormatMessageA(                                                        \
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,  \
+            wsa_error_code, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),         \
+            error_message, sizeof(error_message), NULL);                       \
+        fprintf(stderr, "DEBUG: %s(): Line %d:\nError %d: %sNote: " fmt "\n",  \
+                __func__, __LINE__, wsa_error_code, error_message,             \
+                __VA_ARGS__);                                                  \
+    } while (0)
+#define CUSTOM_PRINT(fmt, ...)                                                 \
+    do                                                                         \
+    {                                                                          \
+        fprintf(stderr, "CUSTOM: %s(): Line %d: " fmt "\n", __func__,          \
+                __LINE__, __VA_ARGS__);                                        \
+    } while (0)
+#else
+#define DEBUG_PRINT(fmt, ...)                                                  \
+    do                                                                         \
+    {                                                                          \
+    } while (0)
+#define DEBUG_ERROR(fmt, ...)                                                  \
+    do                                                                         \
+    {                                                                          \
+    } while (0)
+#define DEBUG_WSAERROR(fmt, ...)                                               \
+    do                                                                         \
+    {                                                                          \
+    } while (0)
+#define CUSTOM_PRINT(fmt, ...)                                                 \
+    do                                                                         \
+    {                                                                          \
+    } while (0)
+#endif
+
+/**
+ * @brief Securely frees memory by zeroing it before deallocation.
+ *
+ * @param hHeap Handle to the heap from which the memory was allocated
+ * @param dwFlags Heap free flags
+ * @param pMem Pointer to the memory block to be freed
+ * @param dwNumBytes Size of the memory block in bytes
+ * @return BOOL - TRUE if successful, FALSE if failed
+ */
+static inline VOID ZeroingHeapFree(HANDLE hHeap,
+                                   DWORD  dwFlags,
+                                   PVOID *ppMem,
+                                   DWORD  dwNumBytes)
+{
+    PVOID pMem = NULL;
+
+    if (NULL != ppMem)
+    {
+        pMem = *ppMem;
+        SecureZeroMemory(pMem, dwNumBytes);
+        HeapFree(hHeap, dwFlags, pMem);
+        *ppMem = NULL;
+    }
+}
+
+#endif // CUSTOM_MACROS
+
 //NOTE: The Msg Holder struct contains state information about packets
 // received by the server. Enables the server to handle partial receives and
 // partial sends during asychronous operations.
@@ -144,8 +269,6 @@ typedef struct USER {
 	MSGHOLDER      m_RecvMsg;
 	PQUEUE		   m_SendMsgQueue;
 	PUSERS	       m_pUsers;
-	//TODO: For potential, later, improvement/addition.
-	//INT64			m_ilSessionID;
 } USER, * PUSER;
 
 //NOTE: Max clients set to 65535 - there are practicaly limits to processing
@@ -163,7 +286,7 @@ typedef struct USER {
 // https://www.servethehome.com/server-core-counts-going-supernova-by-q1-2025-
 // intel-amd-arm-nvidia-ampere/
 //NOTE: wmain thread will still be running and one or two other threads might
-// pop up as well but matching threads and cores exactly isn't essential to 
+// pop up as well but matching threads and cores exactly isn't essential to
 // efficieny - sopme threads will probably have down time.
 #define MAX_THREADS 64
 #define THREADS_32 32

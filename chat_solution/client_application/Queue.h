@@ -6,7 +6,9 @@
  * \date   August 2024
  *********************************************************************/
 #pragma once
-#include "pch.h"
+
+#include <Windows.h>
+#include <stdio.h>
 
 /// <summary>
 /// Node for linked list structure.

@@ -5,8 +5,14 @@
  * \author chris
  * \date   August 2024
  *********************************************************************/
-#include "pch.h"
+#include <Windows.h>
+#include <stdio.h>
+
 #include "c_srv_listen.h"
+#include "c_messages.h"
+#include "c_shared.h"
+
+extern volatile BOOL g_bClientState;
 
  //NOTE: Function that listens for chats and broadcasts and pritns them
  //to the console.
@@ -17,7 +23,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 
 	if (NULL == pListenerArgs)
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("Invalid listener args");
 		InterlockedExchange((PLONG)&g_bClientState, STOP);
 		return;
 	}
@@ -45,8 +51,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 		//NOTE: Ensures that we're reseting each time.
 		if (FALSE == WSAResetEvent(pListenerArgs->m_hHandles[READ_EVENT]))
 		{
-			ThreadPrintErrorWSA(pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__);
+			DEBUG_WSARROR("WSAResetEvent failed");
 			InterlockedExchange((PLONG)&g_bClientState, STOP);
 			return;
 		}
@@ -68,11 +73,10 @@ ListenForChats(PVOID pListenerArgsHolder)
 			hResult = ListenThreadRecvPacket(
 				pListenerArgs->m_hHandles[STD_ERR_MUTEX],
 				pListenerArgs->m_ServerSocket, &ChatMsg);
-			ReleaseMutex(pListenerArgs->m_hHandles[SOCKET_MUTEX]); 
+			ReleaseMutex(pListenerArgs->m_hHandles[SOCKET_MUTEX]);
 			if (S_OK != hResult)
 			{
-				ThreadPrintErrorWSA(pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-					(PCHAR)__func__, __LINE__);
+				DEBUG_WSARROR("WSARecv failed");
 				InterlockedExchange((PLONG)&g_bClientState, STOP);
 				return;
 			}
@@ -89,9 +93,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 				INT wsaLastError = WSAGetLastError();
 				if (WSAECONNRESET == wsaLastError)
 				{
-					ThreadPrintErrorSupplied(
-						pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-						(PCHAR)__func__, __LINE__, wsaLastError);
+					DEBUG_ERROR_SUPPLIED(wsaLastError, "WSARecv failed");
 					InterlockedExchange((PLONG)&g_bClientState, STOP);
 					return;
 				}
@@ -102,8 +104,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 
 		default:
 			ReleaseMutex(pListenerArgs->m_hHandles[SOCKET_MUTEX]);
-			ThreadPrintErrorWSA(pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__);
+			DEBUG_WSARROR("WSARecv failed");
 			InterlockedExchange((PLONG)&g_bClientState, STOP);
 			return;
 		}
@@ -112,7 +113,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 		{
 			continue;
 		}
-		
+
 		if ((ChatMsg.iType == TYPE_CHAT) &&
 			(ChatMsg.iSubType == STYPE_EMPTY) &&
 			(ChatMsg.iOpcode == OPCODE_RES))
@@ -124,8 +125,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 
 			if (FALSE == PacketHeapFree(&ChatMsg))
 			{
-				ThreadPrintErrorCustom(pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-					(PCHAR)__func__, __LINE__, "PacketHeapFree()");
+				DEBUG_ERROR("PacketHeapFree failed");
 				InterlockedExchange((PLONG)&g_bClientState, STOP);
 				return;
 			}

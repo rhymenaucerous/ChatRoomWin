@@ -1,5 +1,8 @@
-#include "pch.h"
+#include <Windows.h>
+#include <stdio.h>
+
 #include "Queue.h"
+#include "c_shared.h"
 
 static PQUEUENODE
 CreateQueueNode()
@@ -10,7 +13,7 @@ CreateQueueNode()
 
 	if (NULL == pQueueNode)
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("HeapAlloc failed");
 		return NULL;
 	}
 
@@ -23,18 +26,14 @@ DestroyQueueNode(PQUEUENODE pQueueNode)
 {
 	if (NULL == pQueueNode)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "NULL input");
-		return EXIT_FAILURE;
+		DEBUG_PRINT("NULL input");
+		return ERR_INVALID_PARAM;
 	}
 
-	if (WIN_EXIT_FAILURE == HeapFree(GetProcessHeap(),
-		NO_OPTION, pQueueNode))
-	{
-		PrintError((PCHAR)__func__, __LINE__);
-		return EXIT_FAILURE;
-	}
+	ZeroingHeapFree(GetProcessHeap(),
+		NO_OPTION, &pQueueNode, sizeof(QUEUENODE));
 
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 PQUEUE
@@ -44,7 +43,7 @@ QueueInit()
 		sizeof(QUEUE));
 	if (NULL == pQueue)
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("HeapAlloc failed");
 		return NULL;
 	}
 
@@ -60,15 +59,15 @@ QueuePush(PQUEUE pQueue, PVOID pData)
 {
 	if (NULL == pQueue || NULL == pData)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "NULL input");
-		return EXIT_FAILURE;
+		DEBUG_PRINT("NULL input");
+		return ERR_INVALID_PARAM;
 	}
 
 	PQUEUENODE pQueueNode = CreateQueueNode();
 	if (NULL == pQueueNode)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "CreateNode()");
-		return EXIT_FAILURE;
+		DEBUG_PRINT("CreateNode()");
+		return ERR_GENERIC;
 	}
 
 	pQueueNode->m_pData = pData;
@@ -83,8 +82,8 @@ QueuePush(PQUEUE pQueue, PVOID pData)
 	{
 		if (NULL == pQueue->m_pHead)
 		{
-			PrintErrorCustom((PCHAR)__func__, __LINE__, "NULL head");
-			return EXIT_FAILURE;
+			DEBUG_PRINT("NULL head");
+			return ERR_GENERIC;
 		}
 
 		pQueue->m_pHead->m_pPrev = pQueueNode;
@@ -95,7 +94,7 @@ QueuePush(PQUEUE pQueue, PVOID pData)
 	pQueueNode->m_pPrev = NULL;
 	pQueue->m_iSize += 1;
 
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 //TODO: update with free fn
@@ -104,16 +103,14 @@ QueuePop(PQUEUE pQueue)
 {
 	if (NULL == pQueue || NULL == pQueue->m_pTail)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "NULL input");
+		DEBUG_PRINT("NULL input");
 		return NULL;
 	}
 
 	PQUEUENODE pTempNode;
-
 	if (0 == pQueue->m_iSize)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__,
-			"Can't return from an empty list");
+		DEBUG_PRINT("Can't return from an empty list");
 		return NULL;
 	}
 	else if (1 == pQueue->m_iSize)
@@ -132,9 +129,9 @@ QueuePop(PQUEUE pQueue)
 	pQueue->m_iSize -= 1;
 	PVOID pData = pTempNode->m_pData;
 
-	if (EXIT_FAILURE == DestroyQueueNode(pTempNode))
+	if (SUCCESS != DestroyQueueNode(pTempNode))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "DestroyQueueNode()");
+		DEBUG_PRINT("DestroyQueueNode()");
 		return NULL;
 	}
 
@@ -152,17 +149,16 @@ QueuePopRemove(PQUEUE pQueue, VOID(*pfnFreeFunction)(PVOID))
 {
 	if (NULL == pQueue || NULL == pQueue->m_pTail || NULL == pfnFreeFunction)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "NULL input");
-		return EXIT_FAILURE;
+		DEBUG_PRINT("NULL input");
+		return ERR_INVALID_PARAM;
 	}
 
 	PQUEUENODE pTempNode;
 
 	if (0 == pQueue->m_iSize)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__,
-			"Can't return from an empty list");
-		return EXIT_SUCCESS;
+		DEBUG_PRINT("Can't return from an empty list");
+		return SUCCESS;
 	}
 	else if (1 == pQueue->m_iSize)
 	{
@@ -180,14 +176,14 @@ QueuePopRemove(PQUEUE pQueue, VOID(*pfnFreeFunction)(PVOID))
 	pQueue->m_iSize -= 1;
 	PVOID pData = pTempNode->m_pData;
 
-	if (EXIT_FAILURE == DestroyQueueNode(pTempNode))
+	if (SUCCESS != DestroyQueueNode(pTempNode))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "DestroyQueueNode()");
-		return EXIT_FAILURE;
+		DEBUG_PRINT("DestroyQueueNode()");
+		return ERR_GENERIC;
 	}
 
 	pfnFreeFunction(pData);
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 WORD
@@ -195,22 +191,22 @@ QueueDestroy(PQUEUE pQueue, VOID (*pfnFreeFunction)(PVOID))
 {
 	if (NULL == pQueue)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "NULL input");
-		return EXIT_FAILURE;
+		DEBUG_PRINT("NULL input");
+		return ERR_INVALID_PARAM;
 	}
 
 	//WARNING: iSize is assumed to be correct, altering value will result
 	//in un-freed heap memory oir double frees.
 	PQUEUENODE pTempNode = pQueue->m_pHead;
 	PQUEUENODE pTempNode2;
-	WORD iResult = EXIT_SUCCESS;
+	WORD iResult = SUCCESS;
 
 	while (0 < pQueue->m_iSize)
 	{
 		if (NULL == pTempNode)
 		{
-			PrintErrorCustom((PCHAR)__func__, __LINE__, "NULL node");
-			iResult = EXIT_FAILURE;
+			DEBUG_PRINT("NULL node");
+			iResult = ERR_GENERIC;
 			break;
 		}
 
@@ -221,10 +217,10 @@ QueueDestroy(PQUEUE pQueue, VOID (*pfnFreeFunction)(PVOID))
 			pfnFreeFunction(pTempNode->m_pData);
 		}
 
-		if (EXIT_FAILURE == DestroyQueueNode(pTempNode))
+		if (SUCCESS != DestroyQueueNode(pTempNode))
 		{
-			PrintErrorCustom((PCHAR)__func__, __LINE__, "DestroyQueueNode()");
-			iResult = EXIT_FAILURE;
+			DEBUG_PRINT("DestroyQueueNode()");
+			iResult = ERR_GENERIC;
 			break;
 		}
 
@@ -232,12 +228,8 @@ QueueDestroy(PQUEUE pQueue, VOID (*pfnFreeFunction)(PVOID))
 		pTempNode = pTempNode2;
 	}
 
-	if (WIN_EXIT_FAILURE == HeapFree(GetProcessHeap(),
-		NO_OPTION, pQueue))
-	{
-		PrintError((PCHAR)__func__, __LINE__);
-		return EXIT_FAILURE;
-	}
+	ZeroingHeapFree(GetProcessHeap(),
+		NO_OPTION, &pQueue, sizeof(QUEUE));
 
 	return iResult;
 }

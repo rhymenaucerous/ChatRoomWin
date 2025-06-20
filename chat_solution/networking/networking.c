@@ -226,13 +226,13 @@ EXIT:
 SOCKET
 NetAccept(SOCKET ListenSocket, volatile BOOL bServerState, HANDLE hShutdown)
 {
-    SOCKADDR_STORAGE ClientAddr            = {0};
-    DWORD            dwAddrLen             = sizeof(SOCKADDR_STORAGE);
-    SOCKET           ClientFileDescriptor  = INVALID_SOCKET;
-    DWORD            dwWaitResult          = WAIT_FAILED;
-    INT              iError                = 0;
-    HANDLE           haEvents[NUM_HANDLES] = {0};
-    WORD             wNumHandles           = NUM_HANDLES;
+    SOCKADDR_STORAGE ClientAddr              = {0};
+    DWORD            dwAddrLen               = sizeof(SOCKADDR_STORAGE);
+    SOCKET           ClientFileDescriptor    = INVALID_SOCKET;
+    DWORD            dwWaitResult            = WAIT_FAILED;
+    INT              iError                  = 0;
+    HANDLE           haEvents[NUM_HANDLES_N] = {0};
+    WORD             wNumHandles             = NUM_HANDLES_N;
 
     if (NULL == hShutdown)
     {

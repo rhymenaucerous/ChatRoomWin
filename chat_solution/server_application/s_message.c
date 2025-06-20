@@ -1,12 +1,15 @@
 /*****************************************************************//**
  * \file   s_message.c
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   September 2024
  *********************************************************************/
-#include "pch.h"
+
 #include "s_message.h"
+#include "../client_application/Queue.h"
+
+extern volatile BOOL g_bServerState;
 
 VOID
 ResetChatRecv(PMSGHOLDER pMsgHolder)
@@ -28,26 +31,22 @@ ResetChatRecv(PMSGHOLDER pMsgHolder)
 //WARNING: pUser print mutexes must already be created.
 //NOTE: Pushes the message onto the queue and returns a pointer to the
 // message.
-PMSGHOLDER
+static PMSGHOLDER
 CreateMsg(PUSER pUser)
 {
 	PMSGHOLDER pMsgHolder = HeapAlloc(GetProcessHeap(),
 		HEAP_ZERO_MEMORY,
 		sizeof(MSGHOLDER));
-
 	if (NULL == pMsgHolder)
 	{
-		ThreadPrintError(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
+        DEBUG_ERROR("HeapAlloc()");
 		return NULL;
 	}
 
 	WORD wResult = QueuePush(pUser->m_SendMsgQueue, pMsgHolder);
-
-	if (EXIT_FAILURE == wResult)
-	{
-		ThreadPrintError(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
+	if (SUCCESS != wResult)
+    {
+        DEBUG_PRINT("QueuePush()");
 		return NULL;
 	}
 
@@ -61,9 +60,8 @@ AddMsgToQueue(PUSER pUser, INT8 iType, INT8 iSubType,
 {
 	PMSGHOLDER pMsgHolder = CreateMsg(pUser);
 	if (NULL == pMsgHolder)
-	{
-		ThreadPrintError(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
+    {
+        DEBUG_PRINT("CreateMsg()");
 		return NULL;
 	}
 
@@ -80,9 +78,8 @@ AddMsgToQueue(PUSER pUser, INT8 iType, INT8 iSubType,
 		errno_t eResult = wcscpy_s(pMsgHolder->m_pBodyBufferOne, (wLenOne + 1),
 			pszDataOne);
 		if (0 != eResult)
-		{
-			ThreadPrintErrorSupplied(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, eResult);
+        {
+            DEBUG_ERROR_SUPPLIED(eResult, "CreateMsg()");
 			return NULL;
 		}
 	}
@@ -91,9 +88,8 @@ AddMsgToQueue(PUSER pUser, INT8 iType, INT8 iSubType,
 		errno_t eResult = wcscpy_s(pMsgHolder->m_pBodyBufferTwo, (wLenTwo + 1),
 			pszDataTwo);
 		if (0 != eResult)
-		{
-			ThreadPrintErrorSupplied(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__, eResult);
+        {
+            DEBUG_ERROR_SUPPLIED(eResult, "wcscpy_s()");
 			return NULL;
 		}
 	}
@@ -127,25 +123,20 @@ ManageMsgQueueAdd(PUSER pUser, INT8 iType, INT8 iSubType,
 	DWORD dwWaitResult = WaitForSingleObject(
 		pUser->m_haSharedHandles[SEND_MUTEX], INFINITE);
 	InterlockedDecrement(&pUser->m_plThreadsWaiting);
-
 	//NOTE: Maybe handle wait abandoned differently than wait failed in the
 	// future.
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "WaitForSingleObject()");
+        DEBUG_ERROR("WaitForSingleObject()");
 		return SRV_SHUTDOWN_ERR;
 	}
 
-	PMSGHOLDER pMsgHolder = AddMsgToQueue(pUser, iType, iSubType, iOpcode,
-		wLenOne, wLenTwo, pszDataOne, pszDataTwo);
-
+	PMSGHOLDER pMsgHolder =
+        AddMsgToQueue(pUser, iType, iSubType, iOpcode, wLenOne, wLenTwo,
+                      pszDataOne, pszDataTwo);
 	if (NULL == pMsgHolder)
-	{
-		ThreadPrintErrorCustom(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__, "AddMsgToQueue()");
+    {
+        DEBUG_PRINT("AddMsgToQueue()");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -160,14 +151,6 @@ ManageMsgQueueAdd(PUSER pUser, INT8 iType, INT8 iSubType,
 	BOOL bResult = ResetEvent(pUser->m_haSharedHandles[SEND_DONE_EVENT]);
 	ReleaseMutex(pUser->m_haSharedHandles[SEND_MUTEX]);
 
-	if (WIN_EXIT_FAILURE == bResult)
-	{
-		ThreadPrintError(
-			pUser->m_haSharedHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
-	}
-
-
 	INT iResult = WSASend(pUser->m_ClientSocket, pMsgHolder->m_wsaBuffer,
 		THREE_BUFFERS, &pMsgHolder->m_dwBytesMoved, pMsgHolder->m_dwFlags,
 		&pMsgHolder->m_wsaOverlapped, NULL);
@@ -177,8 +160,7 @@ ManageMsgQueueAdd(PUSER pUser, INT8 iType, INT8 iSubType,
 		iResult = WSAGetLastError();
 		if (WSA_IO_PENDING != iResult)
 		{
-			ThreadPrintErrorWSA(pUser->m_haSharedHandles[STD_ERR_MUTEX],
-				(PCHAR)__func__, __LINE__);
+            DEBUG_ERROR_SUPPLIED(iResult, "WSAGetLastError");
 			return NON_FATAL_ERR;
 		}
 	}

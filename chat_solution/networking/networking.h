@@ -38,7 +38,7 @@
 
 // Every wait will use the overall shutdown handle. So the number of handles
 // will be orginal handle + shutdown handle = 2.
-#define NUM_HANDLES     2
+#define NUM_HANDLES_N   2
 #define SHUTDOWN_HANDLE 0
 #define SOCKET_EVENT    1
 

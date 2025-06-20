@@ -1,17 +1,18 @@
 /*****************************************************************//**
  * \file   s_listen.h
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   August 2024
  *********************************************************************/
 #pragma once
-#include "pch.h"
-#include "s_shared.h"
-#include "s_worker.h"
-#include "s_message.h"
 
-//WARNING: Include thread safety in description. Some use regular console 
+#include <Windows.h>
+#include <stdio.h>
+
+#include "s_shared.h"
+
+//WARNING: Include thread safety in description. Some use regular console
 // prints for errors. Potentially, make functions static.
 
 VOID

@@ -107,24 +107,22 @@ typedef enum
  * @param dwFlags Heap free flags
  * @param pMem Pointer to the memory block to be freed
  * @param dwNumBytes Size of the memory block in bytes
- * @return BOOL - TRUE if successful, FALSE if failed
+ * @return VOID
  */
-static inline BOOL ZeroingHeapFree(HANDLE hHeap,
+static inline VOID ZeroingHeapFree(HANDLE hHeap,
                                    DWORD  dwFlags,
-                                   PVOID  pMem,
+                                   PVOID *ppMem,
                                    DWORD  dwNumBytes)
 {
-    BOOL bReturn = FALSE;
+    PVOID pMem = NULL;
 
-    SecureZeroMemory(pMem, dwNumBytes);
-
-    bReturn = HeapFree(hHeap, dwFlags, pMem);
-    if (0 == bReturn)
+    if (NULL != ppMem)
     {
-        DEBUG_ERROR("Failed to free memory");
+        pMem = *ppMem;
+        SecureZeroMemory(pMem, dwNumBytes);
+        HeapFree(hHeap, dwFlags, pMem);
+        *ppMem = NULL;
     }
-
-    return bReturn;
 }
 
 #endif // CUSTOM_MACROS

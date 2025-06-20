@@ -1,12 +1,20 @@
 /*****************************************************************//**
  * \file   s_main.c
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   August 2024
  *********************************************************************/
-#include "pch.h"
+#include <Windows.h>
+#include <stdio.h>
+#include <strsafe.h> // StringCchLengthW
+
 #include "s_main.h"
+#include "s_shared.h"
+#include "s_listen.h"
+#include "..\networking\networking.h"
+
+volatile BOOL g_bServerState = CONTINUE;
 
 static BOOL WINAPI
 GracefulShutdown(_In_ DWORD dwCtrlType)
@@ -18,11 +26,7 @@ GracefulShutdown(_In_ DWORD dwCtrlType)
 		//As such, all other cases will have the same effect on g_bServerState.
 	case CTRL_C_EVENT:
 		g_bServerState = STOP;
-		if (S_OK != CustomConsoleWrite(L"Ctrl+C Observed!\n", MSG_6_LEN))
-		{
-			PrintErrorCustom((PCHAR)__func__, __LINE__, "CustomConsoleWrite()");
-			return FALSE;
-		}
+		DEBUG_PRINT("Ctrl+C Observed!");
 		return TRUE;
 
 	case CTRL_CLOSE_EVENT:
@@ -32,11 +36,7 @@ GracefulShutdown(_In_ DWORD dwCtrlType)
 
 	case CTRL_BREAK_EVENT:
 		g_bServerState = STOP;
-		if (S_OK != CustomConsoleWrite(L"Ctrl+break Observed!\n", MSG_6_LEN))
-		{
-			PrintErrorCustom((PCHAR)__func__, __LINE__, "CustomConsoleWrite()");
-			return FALSE;
-		}
+		DEBUG_PRINT("Ctrl+break Observed!");
 		return TRUE;
 
 	case CTRL_LOGOFF_EVENT:
@@ -59,75 +59,75 @@ PortRangeCheck(DWORD dwPort)
 {
 	if ((0 >= dwPort) || (65535 < dwPort))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "Port out of range\n");
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Port out of range");
+        return ERR_INVALID_PARAM;
 	}
 
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 static INT
 MaxClientsCheck(DWORD dwMaxClients)
 {
-	if (((MIN_CLIENTS - 1) >= dwMaxClients) || (MAX_CLIENTS < dwMaxClients))
+	if ((MIN_CLIENTS >= dwMaxClients) || (MAX_CLIENTS < dwMaxClients))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "Max clients out of range\n");
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Max clients out of range");
+        return ERR_INVALID_PARAM;
 	}
 
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 static VOID
 PrintHelp()
 {
-	CustomConsoleWrite(L"\nChat Server Usage:\nserver_application.exe <bind_ip"
+	printf(L"\nChat Server Usage:\nserver_application.exe <bind_ip"
 		"> <bind_port> <max number of clients>\nExample:server_application.exe "
-		"192.168.0.10 1234 5.", MSG_7_LEN);
+		"192.168.0.10 1234 5.\n");
 }
 
 static INT
 CommandLineArgs(INT argc, PTSTR argv[], PSERVERCHATARGS pChatArgs)
 {
 	PWCHAR pcCheck = NULL;
-	
+
 	if (4 != argc)
 	{
-		CustomConsoleWrite(L"Invalid Number of arguments\n", MSG_1_LEN);
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Invalid Number of arguments");
+        return ERR_INVALID_PARAM;
 	}
 
 	//IP will get checked by using it with NetConnect
 	pChatArgs->m_pszBindIP = argv[1];
 	SIZE_T szIPLength = 0;
-	
+
 	if ((S_OK != StringCchLengthW(pChatArgs->m_pszBindIP, CMD_LINE_MAX,
 		&szIPLength)) || (szIPLength > HOST_MAX_STRING))
 	{
-		CustomConsoleWrite(L"Invalid IP\n", MSG_2_LEN);
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Invalid IP");
+        return ERR_INVALID_PARAM;
 	}
 
 	pChatArgs->m_pszBindPort = argv[2];
 	pChatArgs->m_dwBindPort = wcstoul(argv[2], &pcCheck, BASE_10);
 
-	if ((EXIT_SUCCESS != PortRangeCheck(pChatArgs->m_dwBindPort)) ||
+	if ((SUCCESS != PortRangeCheck(pChatArgs->m_dwBindPort)) ||
 		((NULL != pcCheck) && (*pcCheck != L'\0')))
 	{
-		CustomConsoleWrite(L"Invalid Port\n", MSG_3_LEN);
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Invalid Port");
+        return ERR_INVALID_PARAM;
 	}
 
 	pChatArgs->m_dwMaxClients = wcstoul(argv[3], &pcCheck, BASE_10);
-	if ((EXIT_SUCCESS != MaxClientsCheck(pChatArgs->m_dwMaxClients)) ||
+	if ((SUCCESS != MaxClientsCheck(pChatArgs->m_dwMaxClients)) ||
 		((NULL != pcCheck) && (*pcCheck != L'\0')))
 	{
-		CustomConsoleWrite(L"Invalid Max Clients\n", MSG_4_LEN);
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Invalid Max Clients");
+        return ERR_INVALID_PARAM;
 	}
 
 
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 INT
@@ -135,64 +135,61 @@ wmain(INT argc, PTSTR argv[])
 {
 	if (!SetConsoleCtrlHandler(GracefulShutdown, TRUE))
 	{
-		PrintError((PCHAR)__func__, __LINE__);
-		return EXIT_FAILURE;
+		DEBUG_ERROR("SetConsoleCtrlHandler failed");
+        return ERR_GENERIC;
 	}
 
 	//Accepts command line arguments
-	CustomConsoleWrite(L"\n", MSG_5_LEN);
+	DEBUG_PRINT("\n");
 
 	PSERVERCHATARGS pChatArgs = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
 		sizeof(SERVERCHATARGS));
-
 	if (NULL == pChatArgs)
 	{
-		PrintError((PCHAR)__func__, __LINE__);
-		return EXIT_FAILURE;
+		DEBUG_ERROR("HeapAlloc failed");
+        return ERR_MEMORY_ALLOCATION;
 	}
 
 	INT iResult = CommandLineArgs(argc, argv, pChatArgs);
-
-	if (EXIT_FAILURE == iResult)
+	if (SUCCESS != iResult)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "CommandLineArgs()");
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pChatArgs,
+		DEBUG_PRINT("CommandLineArgs failed");
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pChatArgs,
 			sizeof(SERVERCHATARGS));
 		PrintHelp();
-		return EXIT_FAILURE;
+        return iResult;
 	}
 
 	ThreadCount(pChatArgs);
 	if (S_OK != IOCPSetUp(pChatArgs))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "IOCPSetUp()");
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pChatArgs,
+		DEBUG_ERROR("IOCPSetUp failed");
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pChatArgs,
 			sizeof(SERVERCHATARGS));
-		return EXIT_FAILURE;
+		return ERR_GENERIC;
 	}
 
 	if (S_OK != ThreadSetUp(pChatArgs))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "ThreadSetUp()");
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pChatArgs,
+		DEBUG_PRINT("ThreadSetUp failed");
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pChatArgs,
 			sizeof(SERVERCHATARGS));
-		return EXIT_FAILURE;
+        return ERR_GENERIC;
 	}
 
 	//Threads are set up! Let's accept connections and send em to IOCP.
 	iResult = ServerListen(pChatArgs);
-
-	if (EXIT_FAILURE == iResult)
+	if (SUCCESS != iResult)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "ServerListen()");
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pChatArgs,
+		DEBUG_PRINT("ServerListen failed");
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pChatArgs,
 			sizeof(SERVERCHATARGS));
-		return EXIT_FAILURE;
+        return iResult;
 	}
 
-	MyHeapFree(GetProcessHeap(), NO_OPTION, pChatArgs, sizeof(SERVERCHATARGS));
+	ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pChatArgs, sizeof(SERVERCHATARGS));
 
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 //End of file

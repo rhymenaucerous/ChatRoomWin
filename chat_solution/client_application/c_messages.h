@@ -1,13 +1,17 @@
 /*****************************************************************//**
  * \file   c_messages.h
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   September 2024
  *********************************************************************/
 #pragma once
-#include "pch.h"
+
+#include <Windows.h>
+#include <stdio.h>
+
 #include "c_shared.h"
+#include "Messages.h"
 
  //NOTE: Change according to needs (units = milliseconds)
  //NOTE: Also defined in c_shared.h
@@ -18,35 +22,37 @@
  //NOTE: Custom message lengths section
 #define MESSAGE_HDR_1_LEN 73
 
-VOID
-ThreadPrintFailurePacket(HANDLE hStdOut, INT8 wRejectCode);
+VOID ThreadPrintFailurePacket(INT8 wRejectCode);
 
-VOID
-CustomStringPrintTwo(PWSTR pszStrOne, PWSTR pszStrTwo, WORD wLen1, WORD wLen2,
-	HANDLE hStdErr, HANDLE hStdOut);
+VOID CustomStringPrintTwo(PWSTR pszStrOne,
+                          PWSTR pszStrTwo,
+                          WORD  wLen1,
+                          WORD  wLen2);
 
-HRESULT
-SendPacket(HANDLE hStdErr, SOCKET RecvSock, INT8 iType, INT8 iSubType,
-	INT8 iOpcode, WORD wLenOne, WORD wLenTwo, PWSTR pszDataOne,
-	PWSTR pszDataTwo);
+HRESULT SendPacket(SOCKET RecvSock,
+                   INT8   iType,
+                   INT8   iSubType,
+                   INT8   iOpcode,
+                   WORD   wLenOne,
+                   WORD   wLenTwo,
+                   PWSTR  pszDataOne,
+                   PWSTR  pszDataTwo);
 
-BOOL
-PacketHeapFree(PCHATMSG pChatMsg);
+BOOL PacketHeapFree(PCHATMSG pChatMsg);
 
-HRESULT
-SocketPeek(HANDLE hStdErr, SOCKET wsaSocket);
+HRESULT SocketPeek(SOCKET wsaSocket);
 
-HRESULT
-BlockingRecv(WSAEVENT hReadEvent, HANDLE hStdErr, HANDLE hStdOut,
-	SOCKET wsaSocket, LPWSABUF pwsaBuffer, DWORD dwBufferCount,
-	PDWORD pdwBytesReceived, PDWORD pdwFlags);
+HRESULT BlockingRecv(WSAEVENT hReadEvent,
+                     SOCKET   wsaSocket,
+                     LPWSABUF pwsaBuffer,
+                     DWORD    dwBufferCount,
+                     PDWORD   pdwBytesReceived,
+                     PDWORD   pdwFlags);
 
-HRESULT
-ClientRecvPacket(HANDLE hStdErr, HANDLE hStdOut, SOCKET RecvSock,
-	PCHATMSG pChatMsg, WSAEVENT hReadEvent);
+HRESULT ClientRecvPacket(SOCKET   RecvSock,
+                         PCHATMSG pChatMsg,
+                         WSAEVENT hReadEvent);
 
-HRESULT
-ListenThreadRecvPacket(HANDLE hStdErr, SOCKET RecvSock,
-	PCHATMSG pChatMsg);
+HRESULT ListenThreadRecvPacket(SOCKET RecvSock, PCHATMSG pChatMsg);
 
  //End of file

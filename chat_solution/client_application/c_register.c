@@ -1,5 +1,11 @@
-#include "pch.h"
+#include <Windows.h>
+#include <stdio.h>
+
 #include "c_register.h"
+#include "c_messages.h"
+#include "c_shared.h"
+
+extern volatile BOOL g_bClientState;
 
 //NOTE: listener args has the server socket and the read event.
 HRESULT
@@ -20,7 +26,7 @@ HandleRegistration(PWSTR pszClientName, SIZE_T stNameLen,
 
 	if (INVALID_HANDLE_VALUE == hStdInput)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "GetStdHandle");
+		DEBUG_ERROR("Invalid handle");
 		return E_HANDLE;
 	}
 
@@ -38,7 +44,7 @@ HandleRegistration(PWSTR pszClientName, SIZE_T stNameLen,
 			OPCODE_REQ, wNumberofCharsRead, 0, caUserName, NULL);
 		if (S_OK != hResult)
 		{
-			PrintErrorCustom((PCHAR)__func__, __LINE__, "SendPacket()");
+			DEBUG_ERROR("SendPacket failed");
 			return hResult;
 		}
 
@@ -51,7 +57,7 @@ HandleRegistration(PWSTR pszClientName, SIZE_T stNameLen,
 
 		if (S_OK != hResult)
 		{
-			PrintErrorCustom((PCHAR)__func__, __LINE__, "ClientRecvPacket()");
+			DEBUG_ERROR("ClientRecvPacket failed");
 			return hResult;
 		}
 
@@ -66,9 +72,7 @@ HandleRegistration(PWSTR pszClientName, SIZE_T stNameLen,
 				(RecvChat.iOpcode == REJECT_INVALID_PACKET) ||
 				(RecvChat.iOpcode == REJECT_SRV_FULL)))
 			{
-				ThreadPrintFailurePacket(
-					pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-					RecvChat.iOpcode);
+                DEBUG_PRINT("Opcode recieved: %d", RecvChat.iOpcode);
 				CustomConsoleWrite(L"If you'd like to try again, type in your"
 					" username and press enter.\nOtherwise, press ctrl+C.\n",
 					93);
@@ -85,7 +89,7 @@ HandleRegistration(PWSTR pszClientName, SIZE_T stNameLen,
 
 			if ((FALSE == bResult) || (0 == dwNumberofCharsRead))
 			{
-				PrintErrorCustom((PCHAR)__func__, __LINE__, "ReadConsoleW()");
+				DEBUG_ERROR("ReadConsoleW failed");
 				return E_FAIL;
 			}
 

@@ -5,8 +5,15 @@
  * \author chris
  * \date   August 2024
  *********************************************************************/
-#include "pch.h"
+#include <Windows.h>
+#include <stdio.h>
+
 #include "c_main.h"
+#include "c_shared.h"
+#include "c_srv_listen.h"
+#include "..\networking\networking.h"
+
+volatile BOOL g_bClientState = CONTINUE;
 
 //NOTE: Per the example given within the msdn documentation - it's alright to
 //have simple print statements.
@@ -21,11 +28,7 @@ GracefulShutdown(_In_ DWORD dwCtrlType)
 		// g_bServerState.
 	case CTRL_C_EVENT:
 		InterlockedExchange((PLONG)&g_bClientState, STOP);
-		if (S_OK != CustomConsoleWrite(L"Ctrl+C Observed!\n", MSG_6_LEN))
-		{
-			PrintErrorCustom((PCHAR)__func__, __LINE__, "CustomConsoleWrite()");
-			return FALSE;
-		}
+		DEBUG_PRINT("Ctrl+C Observed!");
 		return TRUE;
 
 	case CTRL_CLOSE_EVENT:
@@ -35,11 +38,7 @@ GracefulShutdown(_In_ DWORD dwCtrlType)
 
 	case CTRL_BREAK_EVENT:
 		InterlockedExchange((PLONG)&g_bClientState, STOP);
-		if (S_OK != CustomConsoleWrite(L"Ctrl+break Observed!\n", MSG_6_LEN))
-		{
-			PrintErrorCustom((PCHAR)__func__, __LINE__, "CustomConsoleWrite()");
-			return FALSE;
-		}
+		DEBUG_PRINT("Ctrl+break Observed!");
 		return TRUE;
 
 	case CTRL_LOGOFF_EVENT:
@@ -62,21 +61,21 @@ PortRangeCheck(DWORD dwPort)
 {
 	if ((0 >= dwPort) || (65535 < dwPort))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "Port out of range\n");
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Port out of range");
+        return ERR_INVALID_PARAM;
 	}
 
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 static VOID
 PrintHelp()
 {
-	CustomConsoleWrite(L"\nChat Client Usage:\nchat_client.exe <connect_ip> "
+	printf("\nChat Client Usage:\nchat_client.exe <connect_ip> "
 		"<connect_port> <unique_client_name>\nExample:chat_client.exe "
 		"192.168.0.10 1234 asdf\n\nIP and port must be a valid chat server. "
 		"client name must not already be in use on server.\nOnly the first 10 "
-		"characters of the given user name will be considered.", MSG_10_LEN);
+		"characters of the given user name will be considered.\n");
 }
 
 static INT
@@ -84,28 +83,26 @@ CommandLineArgs(INT argc, PTSTR argv[], PCLIENTCHATARGS pChatArgs)
 {
 	if (4 != argc)
 	{
-		CustomConsoleWrite(L"Invalid Number of arguments\n", MSG_1_LEN);
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Invalid Number of arguments");
+		return ERR_INVALID_PARAM;
 	}
 
 	//IP will get checked by using it with NetConnect
 	pChatArgs->m_pszConnectIP = argv[1];
 	SIZE_T szIPLength = 0;
-
 	if ((S_OK != StringCchLengthW(pChatArgs->m_pszConnectIP, CMD_LINE_MAX,
 		&szIPLength)) || (szIPLength > HOST_MAX_STRING))
 	{
-		CustomConsoleWrite(L"Invalid IP\n", MSG_2_LEN);
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Invalid IP");
+		return ERR_INVALID_PARAM;
 	}
 
 	pChatArgs->m_pszConnectPort = argv[2];
 	pChatArgs->m_dwConnectPort = wcstoul(argv[2], NULL, BASE_10);
-
-	if (EXIT_SUCCESS != PortRangeCheck(pChatArgs->m_dwConnectPort))
+	if (SUCCESS != PortRangeCheck(pChatArgs->m_dwConnectPort))
 	{
-		CustomConsoleWrite(L"Invalid Port\n", MSG_3_LEN);
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Invalid Port");
+		return ERR_INVALID_PARAM;
 	}
 
 	pChatArgs->m_pszClientName = argv[3];
@@ -114,11 +111,11 @@ CommandLineArgs(INT argc, PTSTR argv[], PCLIENTCHATARGS pChatArgs)
 		&pChatArgs->m_szNameLength)) ||
 		(pChatArgs->m_szNameLength > MAX_UNAME_LEN))
 	{
-		CustomConsoleWrite(L"Name too long\n", MSG_4_LEN);
-		return EXIT_FAILURE;
+		DEBUG_PRINT("Name too long");
+		return ERR_INVALID_PARAM;
 	}
 
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 static VOID
@@ -127,13 +124,13 @@ ClientShutdown(PCLIENTCHATARGS pChatArgs, PLISTENERARGS pListenerArgs,
 {
 	if (NULL != pChatArgs)
 	{
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pChatArgs,
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pChatArgs,
 			sizeof(CLIENTCHATARGS));
 	}
 
 	if (NULL != pListenerArgs)
 	{
-		MyHeapFree(GetProcessHeap(), NO_OPTION, pListenerArgs,
+		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pListenerArgs,
 			sizeof(LISTENERARGS));
 	}
 
@@ -148,55 +145,53 @@ wmain(INT argc, PTSTR argv[]) {
 
 	if (!SetConsoleCtrlHandler(GracefulShutdown, TRUE))
 	{
-		PrintError((PCHAR)__func__, __LINE__);
-		return EXIT_FAILURE;
+		DEBUG_ERROR("CreateThread failed");
+		return ERR_GENERIC;
 	}
-	
-	//Accepts command line arguments
-	CustomConsoleWrite(L"\n", MSG_5_LEN);
 
+	//Accepts command line arguments
+	DEBUG_PRINT("\n");
 	PCLIENTCHATARGS pChatArgs = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
 		sizeof(CLIENTCHATARGS));
 
 	if (NULL == pChatArgs)
 	{
-		PrintError((PCHAR)__func__, __LINE__);
-		return EXIT_FAILURE;
+		DEBUG_ERROR("CloseHandle failed");
+		return ERR_GENERIC;
 	}
 
 	INT iResult = CommandLineArgs(argc, argv, pChatArgs);
-
-	if (EXIT_FAILURE == iResult)
+	if (SUCCESS != iResult)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "CommandLineArgs()");
+		DEBUG_PRINT("CommandLineArgs failed");
 		ClientShutdown(pChatArgs, NULL, PRINT_HELP);
-		return EXIT_FAILURE;
+		return ERR_GENERIC;
 	}
 
 	//NOTE: Connects to the server socket.
 	SOCKET ServerSocket = ChatConnect(pChatArgs);
 	if (INVALID_SOCKET == ServerSocket)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "ChatConnect()");
+		DEBUG_PRINT("ChatConnect failed");
 		ClientShutdown(pChatArgs, NULL, PRINT_HELP);
-		return EXIT_FAILURE;
+		return ERR_GENERIC;
 	}
 
 	//NOTE: Creates structures to share data/resources between threads.
 	PLISTENERARGS pListenerArgs = ChatCreate(ServerSocket);
 	if (NULL == pListenerArgs)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "ChatCreate()");
+		DEBUG_PRINT("ChatCreate failed");
 		ClientShutdown(pChatArgs, pListenerArgs, DONT_PRINT_HELP);
-		return EXIT_FAILURE;
+		return ERR_GENERIC;
 	}
 
 	if (S_OK != HandleRegistration(pChatArgs->m_pszClientName,
 		pChatArgs->m_szNameLength, pListenerArgs))
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "HandleRegistration()");
+		DEBUG_PRINT("HandleRegistration failed");
 		ClientShutdown(pChatArgs, pListenerArgs, DONT_PRINT_HELP);
-		return EXIT_FAILURE;
+		return ERR_GENERIC;
 	}
 
 	//NOTE: Creating thread to handle server messages. Will continuously wait
@@ -207,9 +202,9 @@ wmain(INT argc, PTSTR argv[]) {
 
 	if (NULL == hListenerThread)
 	{
-		PrintErrorCustom((PCHAR)__func__, __LINE__, "CreateThread()");
+		DEBUG_ERROR("CreateThread failed");
 		ClientShutdown(pChatArgs, pListenerArgs, DONT_PRINT_HELP);
-		return EXIT_FAILURE;
+		return ERR_GENERIC;
 	}
 
 	//NOTE: Function for handling user input to the client - sends and recieves
@@ -217,11 +212,7 @@ wmain(INT argc, PTSTR argv[]) {
 	//from the server.
 	if (S_OK != UserListen(pListenerArgs))
 	{
-		ThreadPrintErrorWSA(pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
-		ThreadCustomConsoleWrite(pListenerArgs->m_hHandles[STD_OUT_MUTEX],
-			L"Looks like the server may have shut ""down, maybe try again "
-			"later?", 65);
+		DEBUG_WSAERROR("UserListen failed");
 	}
 	InterlockedExchange((PLONG)&g_bClientState, STOP);
 
@@ -229,30 +220,29 @@ wmain(INT argc, PTSTR argv[]) {
 	// before shutdown.
 	if (FALSE == WSASetEvent(pListenerArgs->m_hHandles[READ_EVENT]))
 	{
-		ThreadPrintErrorWSA(pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-			(PCHAR)__func__, __LINE__);
-	}
-	
-	if (WAIT_OBJECT_0 != WaitForSingleObject(hListenerThread, INFINITE))
-	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_WSAERROR("WSASetEvent failed");
 	}
 
-	if (WIN_EXIT_FAILURE == CloseHandle(hListenerThread))
+	if (WAIT_OBJECT_0 != WaitForSingleObject(hListenerThread, INFINITE))
 	{
-		PrintError((PCHAR)__func__, __LINE__);
+		DEBUG_ERROR("WaitForSingleObject failed");
+	}
+
+	if (FALSE != CloseHandle(hListenerThread))
+	{
+		DEBUG_ERROR("CloseHandle failed");
 	}
 
 	//NOTE: Clean function for closing socket and calling WSAClose()
 	if (SOCKET_ERROR == shutdown(ServerSocket, SD_BOTH))
 	{
-		PrintErrorWSA((PCHAR)__func__, __LINE__);
+		DEBUG_WSAERROR("shutdown failed");
 	}
 
 	NetCleanup(ServerSocket, INVALID_SOCKET);
 	ClientShutdown(pChatArgs, pListenerArgs, DONT_PRINT_HELP);
 
-	return EXIT_SUCCESS;
+	return SUCCESS;
 }
 
 //End of file

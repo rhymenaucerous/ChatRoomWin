@@ -26,12 +26,8 @@ static RETURNTYPE DestroyNode(PLINKEDLISTNODE pLinkedListNode)
         goto EXIT;
     }
 
-    if (0 == ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pLinkedListNode,
-                             sizeof(LINKEDLISTNODE)))
-    {
-        DEBUG_ERROR("Failed to free node");
-        goto EXIT;
-    }
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pLinkedListNode,
+                    sizeof(LINKEDLISTNODE));
 
     Return = SUCCESS;
 EXIT:
@@ -453,12 +449,8 @@ LinkedListDestroy(PLINKEDLIST pLinkedList, VOID (*pfnFreeFunction)(PVOID))
         pTempNode = pTempNode2;
     }
 
-    if (0 == ZeroingHeapFree(GetProcessHeap(), NO_OPTION, pLinkedList,
-                             sizeof(LINKEDLIST)))
-    {
-        DEBUG_ERROR("Failed to free node");
-        goto EXIT;
-    }
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pLinkedList,
+                    sizeof(LINKEDLIST));
 
     Return = SUCCESS;
 EXIT:

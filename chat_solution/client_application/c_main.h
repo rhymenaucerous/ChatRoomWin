@@ -1,16 +1,16 @@
 /*****************************************************************//**
  * \file   main.h
- * \brief  
- * 
+ * \brief
+ *
  * \author chris
  * \date   August 2024
  *********************************************************************/
 #pragma once
-#include "pch.h"
-#include "c_shared.h"
-#include "c_connect.h"
-#include "c_srv_listen.h"
-#include "c_user_input.h"
-#include "c_register.h"
+
+#include <Windows.h>
+#include <stdio.h>
+
+#define CMD_LINE_MAX 8191
+#define BASE_10      10
 
 //End of file
