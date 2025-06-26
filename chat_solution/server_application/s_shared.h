@@ -15,8 +15,8 @@
 #include "../hashtable/hashtable.h"
 #include "../linkedlist/linkedlist.h"
 #include "../networking/networking.h"
-#include "../client_application/Messages.h"
-#include "../client_application/Queue.h"
+#include "Messages.h"
+#include "Queue.h"
 
 #define BUFF_SIZE 1024
 
@@ -26,7 +26,7 @@
 //NOTE: This value is chosen based on the default buffer size - 1024.
 //BUFF_SIZE - (MAX_UNAME_LEN + max command len + Two spaces + terminating 0)
 //1024 - (10 + 5 + 2 + 1)
-#define MAX_MSG_LEN 1006
+#define MAX_MSG_LEN_CHAT 1006
 
 //NOTE: Used to designated completion key value for shutting down the worker
 //threads.

@@ -521,7 +521,7 @@ static RETURNTYPE HashTableReHash(PHASHTABLE pHashTable)
         goto CLEAN;
     }
 
-    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pHashTable->m_ppTable,
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, (PVOID)&pHashTable->m_ppTable,
                              wCapacityHolder * sizeof(PLINKEDLIST));
 
     pHashTable->m_ppTable =
@@ -547,7 +547,7 @@ static RETURNTYPE HashTableReHash(PHASHTABLE pHashTable)
     Return = SUCCESS;
     goto CLEAN;
 CLEAN2:
-    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pHashTable->m_ppTable,
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, (PVOID)&pHashTable->m_ppTable,
                              pHashTable->m_wCapacity * sizeof(PLINKEDLIST));
 CLEAN:
     LinkedListDestroy(pLinkedList, NULL);
@@ -811,7 +811,7 @@ HashTableDestroy(PHASHTABLE pHashTable, VOID (*pfnFreeFunction)(PVOID))
 
     Return = SUCCESS;
 CLEAN:
-    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pHashTable->m_ppTable,
+    ZeroingHeapFree(GetProcessHeap(), NO_OPTION, (PVOID)&pHashTable->m_ppTable,
                              pHashTable->m_wCapacity * sizeof(PLINKEDLIST));
 
     ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pHashTable,

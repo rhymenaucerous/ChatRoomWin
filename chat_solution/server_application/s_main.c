@@ -8,6 +8,7 @@
 #include <Windows.h>
 #include <stdio.h>
 #include <strsafe.h> // StringCchLengthW
+#include <wchar.h>   // wcstoul
 
 #include "s_main.h"
 #include "s_shared.h"
@@ -81,7 +82,7 @@ MaxClientsCheck(DWORD dwMaxClients)
 static VOID
 PrintHelp()
 {
-	printf(L"\nChat Server Usage:\nserver_application.exe <bind_ip"
+	wprintf(L"\nChat Server Usage:\nserver_application.exe <bind_ip"
 		"> <bind_port> <max number of clients>\nExample:server_application.exe "
 		"192.168.0.10 1234 5.\n");
 }

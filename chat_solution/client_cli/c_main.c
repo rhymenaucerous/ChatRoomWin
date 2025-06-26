@@ -5,15 +5,49 @@
  * \author chris
  * \date   August 2024
  *********************************************************************/
+#include "..\networking\networking.h"
+
 #include <Windows.h>
 #include <stdio.h>
+#include <strsafe.h>
 
 #include "c_main.h"
 #include "c_shared.h"
 #include "c_srv_listen.h"
-#include "..\networking\networking.h"
+#include "c_user_input.h"
+#include "c_connect.h"
+#include "c_register.h"
 
 volatile BOOL g_bClientState = CONTINUE;
+
+/**
+ * .
+ *
+ * \param pszCustomOutput
+ * Null terminated wide char string provided by user.
+ *
+ * \param dwCustomLen The length of the cutsom string.
+ *
+ * \return HRESULT: E_HANDLE, E_UNEXPECTED, or S_OK.
+ */
+HRESULT
+CustomConsoleWrite(PWCHAR pszCustomOutput, DWORD dwCustomLen)
+{
+    HANDLE hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    if (INVALID_HANDLE_VALUE == hConsoleOutput)
+    {
+        return E_HANDLE;
+    }
+
+    if (FALSE ==
+        WriteConsoleW(hConsoleOutput, pszCustomOutput, dwCustomLen, NULL, NULL))
+    {
+        return E_UNEXPECTED;
+    }
+
+    return S_OK;
+}
 
 //NOTE: Per the example given within the msdn documentation - it's alright to
 //have simple print statements.

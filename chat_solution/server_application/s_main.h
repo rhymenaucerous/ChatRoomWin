@@ -137,33 +137,4 @@ static inline VOID ZeroingHeapFree(HANDLE hHeap,
 
 #endif // CUSTOM_MACROS
 
-/**
- * .
- *
- * \param pszCustomOutput
- * Null terminated wide char string provided by user.
- *
- * \param dwCustomLen The length of the cutsom string.
- *
- * \return HRESULT: E_HANDLE, E_UNEXPECTED, or S_OK.
- */
-HRESULT
-CustomConsoleWrite(PWCHAR pszCustomOutput, DWORD dwCustomLen)
-{
-    HANDLE hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-
-    if (INVALID_HANDLE_VALUE == hConsoleOutput)
-    {
-        return E_HANDLE;
-    }
-
-    if (FALSE ==
-        WriteConsoleW(hConsoleOutput, pszCustomOutput, dwCustomLen, NULL, NULL))
-    {
-        return E_UNEXPECTED;
-    }
-
-    return S_OK;
-}
-
 //End of file

@@ -5,12 +5,17 @@
  * \author chris
  * \date   August 2024
  *********************************************************************/
+#include <WinSock2.h>
+#include <WS2tcpip.h>
 #include <Windows.h>
 #include <stdio.h>
 
 #include "c_srv_listen.h"
 #include "c_messages.h"
 #include "c_shared.h"
+#include "c_main.h"
+
+#include "..\networking\networking.h"
 
 extern volatile BOOL g_bClientState;
 
@@ -51,7 +56,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 		//NOTE: Ensures that we're reseting each time.
 		if (FALSE == WSAResetEvent(pListenerArgs->m_hHandles[READ_EVENT]))
 		{
-			DEBUG_WSARROR("WSAResetEvent failed");
+			DEBUG_WSAERROR("WSAResetEvent failed");
 			InterlockedExchange((PLONG)&g_bClientState, STOP);
 			return;
 		}
@@ -70,13 +75,12 @@ ListenForChats(PVOID pListenerArgsHolder)
 		{
 		case WAIT_OBJECT_0:
 			//NOTE: The listener received a message packet.
-			hResult = ListenThreadRecvPacket(
-				pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-				pListenerArgs->m_ServerSocket, &ChatMsg);
+            hResult =
+                ListenThreadRecvPacket(pListenerArgs->m_ServerSocket, &ChatMsg);
 			ReleaseMutex(pListenerArgs->m_hHandles[SOCKET_MUTEX]);
 			if (S_OK != hResult)
 			{
-				DEBUG_WSARROR("WSARecv failed");
+				DEBUG_WSAERROR("WSARecv failed");
 				InterlockedExchange((PLONG)&g_bClientState, STOP);
 				return;
 			}
@@ -104,7 +108,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 
 		default:
 			ReleaseMutex(pListenerArgs->m_hHandles[SOCKET_MUTEX]);
-			DEBUG_WSARROR("WSARecv failed");
+			DEBUG_WSAERROR("WSARecv failed");
 			InterlockedExchange((PLONG)&g_bClientState, STOP);
 			return;
 		}
@@ -119,9 +123,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 			(ChatMsg.iOpcode == OPCODE_RES))
 		{
 			CustomStringPrintTwo(ChatMsg.pszDataOne, ChatMsg.pszDataTwo,
-				ChatMsg.wLenOne, ChatMsg.wLenTwo,
-				pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-				pListenerArgs->m_hHandles[STD_OUT_MUTEX]);
+				ChatMsg.wLenOne, ChatMsg.wLenTwo);
 
 			if (FALSE == PacketHeapFree(&ChatMsg))
 			{

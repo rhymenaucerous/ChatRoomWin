@@ -7,7 +7,7 @@
  *********************************************************************/
 
 #include "s_shared.h"
-#include "../client_application/Queue.h"
+#include "Queue.h"
 
 extern volatile BOOL g_bServerState;
 

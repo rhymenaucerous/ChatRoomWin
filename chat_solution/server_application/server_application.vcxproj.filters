@@ -24,13 +24,16 @@
     <ClInclude Include="s_listen.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\client_application\Messages.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="s_worker.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="s_message.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Messages.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Queue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -41,9 +44,6 @@
     <ClCompile Include="s_listen.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\client_application\Messages.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="s_worker.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -51,6 +51,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="s_shared.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Messages.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Queue.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

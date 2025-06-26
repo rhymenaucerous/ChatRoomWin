@@ -11,7 +11,8 @@
 #include "s_shared.h"
 #include "s_listen.h"
 #include "s_worker.h"
-#include "../client_application/Queue.h"
+#include "s_message.h"
+#include "Queue.h"
 
 extern volatile BOOL g_bServerState;
 
@@ -186,7 +187,7 @@ ThreadShutDown(PSERVERCHATARGS pServerArgs)
 		break;
 	}
 
-	ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pServerArgs->m_phThreads,
+	ZeroingHeapFree(GetProcessHeap(), NO_OPTION, (PVOID)&pServerArgs->m_phThreads,
 		pServerArgs->m_dwThreadCount * sizeof(HANDLE));
 
 	if (bErrorOccured == FALSE)
@@ -409,7 +410,7 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 		}
 
 		WORD wResult = HashTableNewEntry(pUsers->m_pNewUsersTable, pUser,
-			(PWCHAR)&(pUser->m_ClientSocket),
+			(PCHAR)&(pUser->m_ClientSocket),
 			(sizeof(SOCKET) / sizeof(WCHAR)));
 		ReleaseMutex(pUsers->m_haUsersHandles[NEW_USERS_MUTEX]);
 		if (SUCCESS != wResult)

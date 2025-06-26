@@ -5,6 +5,8 @@
  * \author chris
  * \date   August 2024
  *********************************************************************/
+#include "..\networking\networking.h"
+
 #include <Windows.h>
 #include <stdio.h>
 
@@ -72,14 +74,14 @@ ChatConnect(PCLIENTCHATARGS pChatArgs)
 		return INVALID_SOCKET;
 	}
 
-	if (EXIT_FAILURE == NetSetUp())
+	if (SUCCESS != NetSetUp())
 	{
 		DEBUG_PRINT("NetSetUp()");
 		return INVALID_SOCKET;
 	}
 
-	SOCKET ServerSocket = NetConnect(pChatArgs->m_pszConnectIP,
-		pChatArgs->m_pszConnectPort, NULL, NULL);
+    SOCKET ServerSocket =
+        NetConnect(pChatArgs->m_pszConnectIP, pChatArgs->m_pszConnectPort);
 
 	if (INVALID_SOCKET == ServerSocket)
 	{

@@ -1,9 +1,13 @@
+#include "..\networking\networking.h"
+
 #include <Windows.h>
 #include <stdio.h>
 
 #include "c_register.h"
 #include "c_messages.h"
 #include "c_shared.h"
+#include "c_main.h"
+
 
 extern volatile BOOL g_bClientState;
 
@@ -39,22 +43,19 @@ HandleRegistration(PWSTR pszClientName, SIZE_T stNameLen,
 		WORD wNumberofCharsRead = dwNumberofCharsRead;
 #pragma warning(push)
 
-		HRESULT hResult = SendPacket(pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-			pListenerArgs->m_ServerSocket, TYPE_ACCOUNT, STYPE_LOGIN,
-			OPCODE_REQ, wNumberofCharsRead, 0, caUserName, NULL);
+        HRESULT hResult =
+            SendPacket(pListenerArgs->m_ServerSocket, TYPE_ACCOUNT, STYPE_LOGIN,
+                       OPCODE_REQ, wNumberofCharsRead, 0, caUserName, NULL);
 		if (S_OK != hResult)
 		{
 			DEBUG_ERROR("SendPacket failed");
 			return hResult;
 		}
 
-		CHATMSG RecvChat = { 0 };
-		hResult = ClientRecvPacket(
-			pListenerArgs->m_hHandles[STD_ERR_MUTEX],
-			pListenerArgs->m_hHandles[STD_OUT_MUTEX],
-			pListenerArgs->m_ServerSocket, &RecvChat,
-			(WSAEVENT)pListenerArgs->m_hHandles[READ_EVENT]);
-
+		CHATMSG RecvChat = {0};
+        hResult =
+            ClientRecvPacket(pListenerArgs->m_ServerSocket, &RecvChat,
+                             (WSAEVENT)pListenerArgs->m_hHandles[READ_EVENT]);
 		if (S_OK != hResult)
 		{
 			DEBUG_ERROR("ClientRecvPacket failed");

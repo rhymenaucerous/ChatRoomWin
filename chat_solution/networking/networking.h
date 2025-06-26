@@ -1,8 +1,8 @@
 #pragma once
 
 // Used for WSABUF enable
-#include <WS2tcpip.h>
 #include <WinSock2.h>
+#include <WS2tcpip.h>
 
 // Always used here
 #include <Windows.h>

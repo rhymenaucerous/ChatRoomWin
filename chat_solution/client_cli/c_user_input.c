@@ -5,12 +5,14 @@
  * \author chris
  * \date   September 2024
  *********************************************************************/
+#include "..\networking\networking.h"
 #include <Windows.h>
 #include <stdio.h>
 
 #include "c_user_input.h"
 #include "c_messages.h"
 #include "c_shared.h"
+#include "c_main.h"
 
 extern volatile BOOL g_bClientState;
 

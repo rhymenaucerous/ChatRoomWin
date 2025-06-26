@@ -7,7 +7,7 @@
  *********************************************************************/
 
 #include "s_message.h"
-#include "../client_application/Queue.h"
+#include "Queue.h"
 
 extern volatile BOOL g_bServerState;
 
@@ -148,7 +148,7 @@ ManageMsgQueueAdd(PUSER pUser, INT8 iType, INT8 iSubType,
 		return S_OK;
 	}
 
-	BOOL bResult = ResetEvent(pUser->m_haSharedHandles[SEND_DONE_EVENT]);
+	ResetEvent(pUser->m_haSharedHandles[SEND_DONE_EVENT]);
 	ReleaseMutex(pUser->m_haSharedHandles[SEND_MUTEX]);
 
 	INT iResult = WSASend(pUser->m_ClientSocket, pMsgHolder->m_wsaBuffer,

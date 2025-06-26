@@ -13,4 +13,7 @@
 #define CMD_LINE_MAX 8191
 #define BASE_10      10
 
+HRESULT
+CustomConsoleWrite(PWCHAR pszCustomOutput, DWORD dwCustomLen);
+
 //End of file

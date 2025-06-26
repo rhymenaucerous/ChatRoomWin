@@ -5,12 +5,15 @@
  * \author chris
  * \date   September 2024
  *********************************************************************/
+#include <WinSock2.h>
+#include <WS2tcpip.h>
 #include <Windows.h>
 #include <stdio.h>
 #include <strsafe.h>
 
 #include "c_messages.h"
 #include "c_shared.h"
+#include "c_main.h"
 #include "Messages.h"
 
 VOID ThreadPrintFailurePacket(INT8 wRejectCode)

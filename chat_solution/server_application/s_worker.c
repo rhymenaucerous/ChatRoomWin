@@ -7,11 +7,43 @@
  *********************************************************************/
 #include <Windows.h>
 #include <stdio.h>
+#include <wchar.h>
+#include <strsafe.h>
 
 #include "s_worker.h"
 #include "s_shared.h"
+#include "s_message.h"
 
 extern volatile BOOL g_bServerState;
+
+/**
+ * .
+ *
+ * \param pszCustomOutput
+ * Null terminated wide char string provided by user.
+ *
+ * \param dwCustomLen The length of the cutsom string.
+ *
+ * \return HRESULT: E_HANDLE, E_UNEXPECTED, or S_OK.
+ */
+static HRESULT
+CustomConsoleWrite(PWCHAR pszCustomOutput, DWORD dwCustomLen)
+{
+    HANDLE hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    if (INVALID_HANDLE_VALUE == hConsoleOutput)
+    {
+        return E_HANDLE;
+    }
+
+    if (FALSE ==
+        WriteConsoleW(hConsoleOutput, pszCustomOutput, dwCustomLen, NULL, NULL))
+    {
+        return E_UNEXPECTED;
+    }
+
+    return S_OK;
+}
 
 //NOTE: Calling function will need to release users mutex.
 //NOTE: on success, S_OK returned. on failure, SRV_SHUTDOWN_ERR returned -
@@ -144,8 +176,7 @@ WorkerPartialRecv(PUSER pUser)
 //WARNING: Assumes packet header length = 7 and contains correct lengths of
 // wide char strings one and two.
 static HRESULT
-WorkerPartialSend(PMSGHOLDER pMsgHolder, SOCKET ClientSocket,
-	HANDLE StdErrMutex)
+WorkerPartialSend(PMSGHOLDER pMsgHolder, SOCKET ClientSocket)
 {
 	//NOTE: WorkerThread() established that BytesSent < BytestoSend.
 	CHATMSG pChatMsg = pMsgHolder->m_Header;
@@ -214,7 +245,7 @@ CheckforUser(PUSER pUser, PCHATMSG pChatMsg)
 	}
 
 	WORD wResult = HashTableNewEntry(pUser->m_pUsers->m_pUsersHTable, pUser,
-		pChatMsg->pszDataOne, pChatMsg->wLenOne);
+                          (PCHAR)pChatMsg->pszDataOne, pChatMsg->wLenOne);
 	ReleaseMutex(pUser->m_pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
 
 	if (SUCCESS != wResult)
@@ -245,7 +276,7 @@ CheckforUser(PUSER pUser, PCHATMSG pChatMsg)
 	}
 
 	HashTableDestroyEntry(pUser->m_pUsers->m_pNewUsersTable,
-		(PWCHAR) & (pUser->m_ClientSocket), (sizeof(SOCKET) / sizeof(WCHAR)));
+		(PCHAR)&(pUser->m_ClientSocket), (sizeof(SOCKET) / sizeof(WCHAR)));
 	ReleaseMutex(pUser->m_pUsers->m_haUsersHandles[NEW_USERS_MUTEX]);
 
 	//Successful login.
@@ -438,7 +469,7 @@ HandleClientMessage(PUSER pUser, PCHATMSG pChatMsg)
 			REJECT_UNAME_LEN, 0, 0, NULL, NULL);
 	}
 
-	if (pChatMsg->wLenTwo > MAX_MSG_LEN)
+	if (pChatMsg->wLenTwo > MAX_MSG_LEN_CHAT)
 	{
 		//NOTE: message too long.
 		return ManageMsgQueueAdd(pUser, TYPE_FAILURE, STYPE_EMPTY,
@@ -456,7 +487,7 @@ HandleClientMessage(PUSER pUser, PCHATMSG pChatMsg)
 	}
 
 	PUSER pTargetUser = HashTableReturnEntry(pUser->m_pUsers->m_pUsersHTable,
-		pChatMsg->pszDataOne, pChatMsg->wLenOne);
+                             (PCHAR)pChatMsg->pszDataOne, pChatMsg->wLenOne);
 
 	if (NULL == pTargetUser)
 	{
@@ -590,7 +621,7 @@ HandleLogout(PUSER pUser)
 	}
 
 	PUSER pTempUser = HashTableDestroyEntry(pUser->m_pUsers->m_pUsersHTable,
-		pUser->m_caUsername, pUser->m_wUsernameLen);
+		(PCHAR)pUser->m_caUsername, pUser->m_wUsernameLen);
 	ReleaseMutex(pUser->m_pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
 
 	if (NULL == pTempUser)
@@ -885,7 +916,7 @@ WorkerRecvOP(PUSER pUser, DWORD dwBytesTransferred)
 	ChatMsgCopy.pszDataOne = pszDataOne;
 	ChatMsgCopy.pszDataTwo = pszDataTwo;
 
-	if ((0 < ChatMsgCopy.wLenOne) && (ChatMsgCopy.wLenOne < MAX_MSG_LEN))
+	if ((0 < ChatMsgCopy.wLenOne) && (ChatMsgCopy.wLenOne < MAX_MSG_LEN_CHAT))
 	{
 		errno_t eResult = wmemcpy_s(pszDataOne, (BUFF_SIZE + 1),
 			pUser->m_RecvMsg.m_pBodyBufferOne, ChatMsgCopy.wLenOne);
@@ -898,7 +929,7 @@ WorkerRecvOP(PUSER pUser, DWORD dwBytesTransferred)
 		/*wprintf(L"string one:%s\n", pszDataOne);*/
 	}
 
-	if ((0 < ChatMsgCopy.wLenTwo) && (ChatMsgCopy.wLenTwo < MAX_MSG_LEN))
+	if ((0 < ChatMsgCopy.wLenTwo) && (ChatMsgCopy.wLenTwo < MAX_MSG_LEN_CHAT))
 	{
 		errno_t eResult = wmemcpy_s(pszDataTwo, (BUFF_SIZE + 1),
 			pUser->m_RecvMsg.m_pBodyBufferTwo, ChatMsgCopy.wLenTwo);
@@ -1045,8 +1076,7 @@ WorkerSendOP(PUSER pUser, DWORD dwBytesTransferred)
 	pSendHolder->m_dwBytesMovedTotal += dwBytesTransferred;
 	if (pSendHolder->m_dwBytesMovedTotal < pSendHolder->m_dwBytestoMove)
 	{
-		hResult = WorkerPartialSend(pSendHolder, pUser->m_ClientSocket,
-			pUser->m_haSharedHandles[STD_ERR_MUTEX]);
+		hResult = WorkerPartialSend(pSendHolder, pUser->m_ClientSocket);
 		if (S_OK != hResult)
 		{
 			DEBUG_ERROR("WorkerPartialSend failed");
@@ -1122,7 +1152,8 @@ ClientShutdown(PUSER pUser)
 	}
 
 	PUSER pTempUser = HashTableDestroyEntry(pUser->m_pUsers->m_pUsersHTable,
-		pUser->m_caUsername, pUser->m_wUsernameLen);
+                                            (PCHAR)pUser->m_caUsername,
+                                            pUser->m_wUsernameLen);
 	ReleaseMutex(pUser->m_pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
 
 	if (NULL == pTempUser)
@@ -1200,7 +1231,7 @@ HandleClientShutdown(PUSER pUser, PMSGHOLDER pMsgHolder)
 
 		PUSER pTempUser = HashTableDestroyEntry(
 			pUser->m_pUsers->m_pNewUsersTable,
-			(PWCHAR) & (pUser->m_ClientSocket),
+			(PCHAR)&(pUser->m_ClientSocket),
 			(sizeof(SOCKET) / sizeof(WCHAR)));
 		ReleaseMutex(pUser->m_pUsers->m_haUsersHandles[NEW_USERS_MUTEX]);
 
