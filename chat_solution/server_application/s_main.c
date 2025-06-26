@@ -16,6 +16,14 @@
 #include "..\networking\networking.h"
 
 volatile BOOL g_bServerState = CONTINUE;
+HANDLE        g_hShutdownEvent = NULL;
+
+DWORD CustomWaitForSingleObject(HANDLE hInputEvent, DWORD dwTimeout)
+{
+    HANDLE hEvents[2] = {hInputEvent, g_hShutdownEvent};
+
+    return WaitForMultipleObjects(2, hEvents, FALSE, dwTimeout);
+}
 
 static BOOL WINAPI
 GracefulShutdown(_In_ DWORD dwCtrlType)
@@ -27,27 +35,32 @@ GracefulShutdown(_In_ DWORD dwCtrlType)
 		//As such, all other cases will have the same effect on g_bServerState.
 	case CTRL_C_EVENT:
 		g_bServerState = STOP;
+        SetEvent(g_hShutdownEvent);
 		DEBUG_PRINT("Ctrl+C Observed!");
 		return TRUE;
 
 	case CTRL_CLOSE_EVENT:
 		//NOTE: User closed the console.
+        SetEvent(g_hShutdownEvent);
 		g_bServerState = STOP;
 		return TRUE;
 
 	case CTRL_BREAK_EVENT:
-		g_bServerState = STOP;
+        g_bServerState = STOP;
+        SetEvent(g_hShutdownEvent);
 		DEBUG_PRINT("Ctrl+break Observed!");
 		return TRUE;
 
 	case CTRL_LOGOFF_EVENT:
 		//NOTE: User logged off.
-		g_bServerState = STOP;
+        g_bServerState = STOP;
+        SetEvent(g_hShutdownEvent);
 		return TRUE;
 
 	case CTRL_SHUTDOWN_EVENT:
 		//NOTE: System shutdown.
-		g_bServerState = STOP;
+        g_bServerState = STOP;
+        SetEvent(g_hShutdownEvent);
 		return TRUE;
 
 	default:
@@ -134,6 +147,8 @@ CommandLineArgs(INT argc, PTSTR argv[], PSERVERCHATARGS pChatArgs)
 INT
 wmain(INT argc, PTSTR argv[])
 {
+    g_hShutdownEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
 	if (!SetConsoleCtrlHandler(GracefulShutdown, TRUE))
 	{
 		DEBUG_ERROR("SetConsoleCtrlHandler failed");

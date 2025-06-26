@@ -9,6 +9,8 @@
 #include "s_message.h"
 #include "Queue.h"
 
+#include "s_main.h"
+
 extern volatile BOOL g_bServerState;
 
 VOID
@@ -120,7 +122,7 @@ ManageMsgQueueAdd(PUSER pUser, INT8 iType, INT8 iSubType,
 {
 	InterlockedIncrement(&pUser->m_plThreadsWaiting);
 
-	DWORD dwWaitResult = WaitForSingleObject(
+	DWORD dwWaitResult = CustomWaitForSingleObject(
 		pUser->m_haSharedHandles[SEND_MUTEX], INFINITE);
 	InterlockedDecrement(&pUser->m_plThreadsWaiting);
 	//NOTE: Maybe handle wait abandoned differently than wait failed in the

@@ -137,4 +137,6 @@ static inline VOID ZeroingHeapFree(HANDLE hHeap,
 
 #endif // CUSTOM_MACROS
 
+DWORD CustomWaitForSingleObject(HANDLE hInputEvent, DWORD dwTimeout);
+
 //End of file

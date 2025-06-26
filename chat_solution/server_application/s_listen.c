@@ -12,9 +12,11 @@
 #include "s_listen.h"
 #include "s_worker.h"
 #include "s_message.h"
+#include "s_main.h"
 #include "Queue.h"
 
 extern volatile BOOL g_bServerState;
+extern HANDLE        g_hShutdownEvent;
 
 VOID
 ThreadCount(PSERVERCHATARGS pServerArgs)
@@ -373,7 +375,7 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 	while(CONTINUE == g_bServerState)
 	{
         SOCKET ClientSocket =
-            NetAccept(pServerArgs->m_ListenSocket, g_bServerState, NULL);
+            NetAccept(pServerArgs->m_ListenSocket, g_bServerState, g_hShutdownEvent);
 
 		//NOTE: Errors that are not fatal are handled within NetAccept.
 		if (INVALID_SOCKET == ClientSocket)
@@ -399,11 +401,11 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 		}
 
 		//NOTE: Client socket utilized for now as it will always be unique.
-		DWORD dwWaitResult = WaitForSingleObject(
+        DWORD dwWaitResult = CustomWaitForSingleObject(
 			pUsers->m_haUsersHandles[NEW_USERS_MUTEX], INFINITE);
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
-			DEBUG_ERROR("WaitForSingleObject failed");
+			DEBUG_ERROR("CustomWaitForSingleObject failed");
 			ReleaseMutex(pUsers->m_haUsersHandles[NEW_USERS_MUTEX]);
 			ServerShutDown(pServerArgs, pUsers);
 			return SRV_SHUTDOWN_ERR;

@@ -13,6 +13,7 @@
 #include "s_worker.h"
 #include "s_shared.h"
 #include "s_message.h"
+#include "s_main.h"
 
 extern volatile BOOL g_bServerState;
 
@@ -56,11 +57,11 @@ UsersTableWriter(PUSER pUser)
 		pUser->m_pUsers->m_haUsersHandles[USERS_WRITE_MUTEX];
 
 	//NOTE: Use same logic cycle as register to access users hash table.
-	DWORD dwWaitResult = WaitForSingleObject(pUserWriteMutex, INFINITE);
+	DWORD dwWaitResult = CustomWaitForSingleObject(pUserWriteMutex, INFINITE);
 
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-		DEBUG_ERROR("WaitForSingleObject failed");
+		DEBUG_ERROR("CustomWaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -70,13 +71,13 @@ UsersTableWriter(PUSER pUser)
 	{
 		//NOTE: Waiting for a reader to signal that no more readers are using
 		// the semaphore.
-		dwWaitResult = WaitForSingleObject(
+		dwWaitResult = CustomWaitForSingleObject(
 			pUser->m_pUsers->m_haUsersHandles[READERS_DONE_EVENT], INFINITE);
 
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
 			ReleaseMutex(pUserWriteMutex);
-			DEBUG_ERROR("WaitForSingleObject failed");
+			DEBUG_ERROR("CustomWaitForSingleObject failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 	}
@@ -266,12 +267,12 @@ CheckforUser(PUSER pUser, PCHATMSG pChatMsg)
 		pChatMsg->pszDataOne);
 	pUser->m_wUsernameLen = pChatMsg->wLenOne;
 
-	DWORD dwWaitResult = WaitForSingleObject(
+	DWORD dwWaitResult = CustomWaitForSingleObject(
 		pUser->m_pUsers->m_haUsersHandles[NEW_USERS_MUTEX], INFINITE);
 
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-		DEBUG_ERROR("WaitForSingleObject failed");
+		DEBUG_ERROR("CustomWaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -376,7 +377,7 @@ SendOtherClientMessage(PUSER pUser, PUSER pTargetUser, PCHATMSG pChatMsg)
 
 	if (S_OK != hResult)
 	{
-		DEBUG_ERROR("WaitForSingleObject failed");
+		DEBUG_ERROR("CustomWaitForSingleObject failed");
 		return hResult;
 	}
 
@@ -387,22 +388,22 @@ SendOtherClientMessage(PUSER pUser, PUSER pTargetUser, PCHATMSG pChatMsg)
 static HRESULT
 UsersTableReaderStart(PUSERS pUsers)
 {
-	DWORD dwWaitResult = WaitForSingleObject(
+	DWORD dwWaitResult = CustomWaitForSingleObject(
 		pUsers->m_haUsersHandles[USERS_WRITE_MUTEX], INFINITE);
 
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-		DEBUG_ERROR("WaitForSingleObject failed");
+		DEBUG_ERROR("CustomWaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
-	dwWaitResult = WaitForSingleObject(
+	dwWaitResult = CustomWaitForSingleObject(
 		pUsers->m_haUsersHandles[USERS_READ_SEMAPHORE], INFINITE);
 
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
 		ReleaseMutex(pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
-		DEBUG_ERROR("WaitForSingleObject failed");
+		DEBUG_ERROR("CustomWaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -602,12 +603,12 @@ HandleLogout(PUSER pUser)
 	//NOTE: Waiting for m_plSendOccuring to go to zero.
 	if (pUser->m_plSendOccuring != 0)
 	{
-		dwWaitResult = WaitForSingleObject(
+		dwWaitResult = CustomWaitForSingleObject(
 			pUser->m_haSharedHandles[SEND_DONE_EVENT], INFINITE);
 
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
-			DEBUG_ERROR("WaitForSingleObject failed");
+			DEBUG_ERROR("CustomWaitForSingleObject failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 	}
@@ -987,7 +988,7 @@ CheckSendQueue(PUSER pUser)
 
 	if (NULL == pMsgHolder)
 	{
-		DEBUG_ERROR("WaitForSingleObject failed");
+		DEBUG_ERROR("CustomWaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -1013,7 +1014,7 @@ ManageSendQueue(PUSER pUser)
 {
 	InterlockedIncrement(&pUser->m_plThreadsWaiting);
 
-	DWORD dwWaitResult = WaitForSingleObject(
+	DWORD dwWaitResult = CustomWaitForSingleObject(
 		pUser->m_haSharedHandles[SEND_MUTEX], INFINITE);
 	InterlockedDecrement(&pUser->m_plThreadsWaiting);
 
@@ -1021,7 +1022,7 @@ ManageSendQueue(PUSER pUser)
 	// future.
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-		DEBUG_ERROR("WaitForSingleObject failed");
+		DEBUG_ERROR("CustomWaitForSingleObject failed");
 		return SRV_SHUTDOWN_ERR;
 	}
 
@@ -1141,12 +1142,12 @@ ClientShutdown(PUSER pUser)
 	//NOTE: Waiting for m_plSendOccuring to go to zero.
 	if (pUser->m_plSendOccuring != 0)
 	{
-		DWORD dwWaitResult = WaitForSingleObject(
+		DWORD dwWaitResult = CustomWaitForSingleObject(
 			pUser->m_haSharedHandles[SEND_DONE_EVENT], INFINITE);
 
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
-			DEBUG_ERROR("WaitForSingleObject failed");
+			DEBUG_ERROR("CustomWaitForSingleObject failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 	}
@@ -1220,12 +1221,12 @@ HandleClientShutdown(PUSER pUser, PMSGHOLDER pMsgHolder)
 	{
 		//NOTE: This will be the only thread, user removed from new users hash
 		// table.
-		DWORD dwWaitResult = WaitForSingleObject(
+		DWORD dwWaitResult = CustomWaitForSingleObject(
 			pUser->m_pUsers->m_haUsersHandles[NEW_USERS_MUTEX], INFINITE);
 
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
-			DEBUG_ERROR("WaitForSingleObject failed");
+			DEBUG_ERROR("CustomWaitForSingleObject failed");
 			return SRV_SHUTDOWN_ERR;
 		}
 
