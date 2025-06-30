@@ -148,15 +148,11 @@ INT
 wmain(INT argc, PTSTR argv[])
 {
     g_hShutdownEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-
 	if (!SetConsoleCtrlHandler(GracefulShutdown, TRUE))
 	{
 		DEBUG_ERROR("SetConsoleCtrlHandler failed");
         return ERR_GENERIC;
 	}
-
-	//Accepts command line arguments
-	DEBUG_PRINT("\n");
 
 	PSERVERCHATARGS pChatArgs = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
 		sizeof(SERVERCHATARGS));
@@ -194,7 +190,7 @@ wmain(INT argc, PTSTR argv[])
 	}
 
 	//Threads are set up! Let's accept connections and send em to IOCP.
-	iResult = ServerListen(pChatArgs);
+    iResult = ServerListen(pChatArgs);
 	if (SUCCESS != iResult)
 	{
 		DEBUG_PRINT("ServerListen failed");

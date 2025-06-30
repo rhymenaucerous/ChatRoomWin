@@ -277,7 +277,6 @@ LinkedListRemove(PLINKEDLIST pLinkedList,
                  WORD        wIndex,
                  VOID (*pfnFreeFunction)(PVOID))
 {
-    DEBUG_PRINT("remove called!");
     PVOID pData = NULL;
     if ((NULL == pLinkedList) || (NULL == pLinkedList->m_pHead) ||
         (NULL == pLinkedList->m_pTail))
@@ -317,7 +316,6 @@ LinkedListRemove(PLINKEDLIST pLinkedList,
     }
 
 EXIT:
-    DEBUG_PRINT("remove finished!");
     return pData;
 }
 

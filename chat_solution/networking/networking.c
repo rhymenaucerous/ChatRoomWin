@@ -14,8 +14,8 @@ RETURNTYPE NetSetUp()
         goto EXIT;
     }
 
-    DEBUG_PRINT("Using winsock V%u.%u", LOBYTE(wsaData.wVersion),
-                HIBYTE(wsaData.wVersion));
+    printf("Using winsock V%u.%u\n", LOBYTE(wsaData.wVersion),
+           HIBYTE(wsaData.wVersion));
 
     if (LOBYTE(wsaData.wVersion) != WS_MAJ_VER ||
         HIBYTE(wsaData.wVersion) != WS_MIN_VER)
@@ -76,11 +76,11 @@ static VOID PrintAddrInfo(const PADDRINFOW pAddrInfo, WORD wMsg)
 
     if (SRV_MSG == wMsg)
     {
-        DEBUG_PRINT("Server bound to: %S:%d", caString, iPort);
+        printf("Server bound to: %S:%d\n", caString, iPort);
     }
     else if (CLNT_MSG == wMsg)
     {
-        DEBUG_PRINT("Client connected to: %S:%d", caString, iPort);
+        printf("Client connected to: %S:%d\n", caString, iPort);
     }
     else
     {
@@ -217,7 +217,7 @@ static VOID PrintSockaddrStorage(const PSOCKADDR_STORAGE pSockaddrStorage)
         goto EXIT;
     }
 
-    DEBUG_PRINT("Connection from: %S:%d", caString, iPort);
+    printf("Connection from: %S:%d\n", caString, iPort);
 
 EXIT:
     return;
@@ -290,6 +290,12 @@ NetAccept(SOCKET ListenSocket, volatile BOOL bServerState, HANDLE hShutdown)
                 break;
             }
         }
+        else if ((WAIT_OBJECT_0 + 1) == dwWaitResult)
+        {
+            // The shutdown handle is observed.
+            DEBUG_PRINT("Shutdown handle signaled");
+            break;
+        }
         else if (WAIT_TIMEOUT == dwWaitResult)
         {
             // The function has timed out but will be reset.
@@ -308,7 +314,7 @@ NetAccept(SOCKET ListenSocket, volatile BOOL bServerState, HANDLE hShutdown)
         DEBUG_WSAERROR("WSACloseEvent()");
     }
 
-    if (CONTINUE != bServerState)
+    if (!InterlockedCompareExchange(&bServerState, CONTINUE, CONTINUE))
     {
         goto CLOSE;
     }
@@ -318,7 +324,7 @@ NetAccept(SOCKET ListenSocket, volatile BOOL bServerState, HANDLE hShutdown)
 #endif
     goto EXIT;
 CLOSE:
-    NetCleanup(ClientFileDescriptor, INVALID_SOCKET);
+    NetCleanup(ClientFileDescriptor, DONT_CLEAN);
 EXIT:
     return ClientFileDescriptor;
 }

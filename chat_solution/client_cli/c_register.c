@@ -19,20 +19,12 @@ HandleRegistration(PWSTR pszClientName, SIZE_T stNameLen,
 	WCHAR caUserName[MAX_UNAME_LEN + 1] = { 0 };
 	wcscpy_s(caUserName, MAX_UNAME_LEN, pszClientName);
 
-	HANDLE hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-
 //NOTE: Safe conversion from size_t to DWORD is possible due to check in main -
 // stNameLen must be 10 or less.
 #pragma warning(push)
 #pragma warning(disable : 4244)
 	DWORD dwNumberofCharsRead = stNameLen;
 #pragma warning(push)
-
-	if (INVALID_HANDLE_VALUE == hStdInput)
-	{
-		DEBUG_ERROR("Invalid handle");
-		return E_HANDLE;
-	}
 
 	while (CONTINUE == g_bClientState)
 	{
@@ -85,7 +77,9 @@ HandleRegistration(PWSTR pszClientName, SIZE_T stNameLen,
 			}
 
 			SecureZeroMemory(caUserName, MAX_UNAME_LEN);
-			BOOL bResult = ReadConsoleW(hStdInput, caUserName, (MAX_UNAME_LEN),
+            BOOL bResult =
+                ReadConsoleW(GetStdHandle(STD_INPUT_HANDLE), caUserName,
+                             (MAX_UNAME_LEN),
 				&dwNumberofCharsRead, NULL);
 
 			if ((FALSE == bResult) || (0 == dwNumberofCharsRead))

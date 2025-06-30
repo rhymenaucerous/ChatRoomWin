@@ -160,18 +160,14 @@ typedef struct CLIENTCHATARGS {
 } CLIENTCHATARGS, * PCLIENTCHATARGS;
 
 //NOTE: macros defining which handle is which index in the array.
-#define NUM_HANDLES 4
+#define NUM_HANDLES 5
+#define READ_EVENT   0
 #define SOCKET_MUTEX 1
-#define READ_EVENT 0
-
-//WARNING: Thread print functions lock and release STDOUT/STDERR custom
-//mutexes.
-#define STD_OUT_MUTEX 2
-#define STD_ERR_MUTEX 3
-
-//NOTE: Used in the c_srv_listen's ListenForChats(). Number of handles that
-// waitformultiplehandles() will wait for. Only access the first two handles.
-#define NUM_WAIT_HANDLES 2
+#define SHUTDOWN_EVENT 2
+// The user listener thread got input
+#define ULISTEN_WAIT_FINISHED 3
+// The user listerner thread completed actions and is listening again
+#define ULISTEN_WAITING 4
 
 //NOTE: Lengths of commands
 #define CMD_1_LEN 4

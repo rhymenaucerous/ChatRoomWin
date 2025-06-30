@@ -12,6 +12,7 @@
 
 #include "c_connect.h"
 
+extern HANDLE g_hShutdownEvent;
 
  //NOTE: Creating data structures shared between threads.
  //Need server socket and to create mutex for using that socket.
@@ -33,20 +34,20 @@ ChatCreate(SOCKET ServerSocket)
 
 	//NOTE: Mutexes are automatically released on program termination.
 	pListenerArgs->m_hHandles[SOCKET_MUTEX] = CreateMutexW(NULL, FALSE, NULL);
-	pListenerArgs->m_hHandles[STD_OUT_MUTEX] = CreateMutexW(NULL, FALSE, NULL);
-	pListenerArgs->m_hHandles[STD_ERR_MUTEX] = CreateMutexW(NULL, FALSE, NULL);
-
-	if ((NULL == pListenerArgs->m_hHandles[SOCKET_MUTEX])
-		|| (NULL == pListenerArgs->m_hHandles[STD_OUT_MUTEX])
-		|| (NULL == pListenerArgs->m_hHandles[STD_ERR_MUTEX]))
+	if (NULL == pListenerArgs->m_hHandles[SOCKET_MUTEX])
 	{
 		DEBUG_ERROR("CreateMutexW()");
 		return NULL;
 	}
 
-	//NOTE: Create event for FD_READ
-	pListenerArgs->m_hHandles[READ_EVENT] = WSACreateEvent();
-	if (WSA_INVALID_EVENT == pListenerArgs->m_hHandles[READ_EVENT])
+    pListenerArgs->m_hHandles[READ_EVENT] = WSACreateEvent();
+    pListenerArgs->m_hHandles[ULISTEN_WAIT_FINISHED] =
+        CreateEvent(NULL, TRUE, TRUE, NULL);
+    pListenerArgs->m_hHandles[ULISTEN_WAITING] =
+        CreateEvent(NULL, TRUE, FALSE, NULL);
+    if ((WSA_INVALID_EVENT == pListenerArgs->m_hHandles[READ_EVENT]) ||
+        (NULL == pListenerArgs->m_hHandles[ULISTEN_WAIT_FINISHED]) ||
+        (NULL == pListenerArgs->m_hHandles[ULISTEN_WAITING]))
 	{
 		DEBUG_WSAERROR("WSACreateEvent failed");
 		return NULL;
@@ -59,6 +60,8 @@ ChatCreate(SOCKET ServerSocket)
 		DEBUG_WSAERROR("WSAEventSelect failed");
 		return NULL;
 	}
+
+	pListenerArgs->m_hHandles[SHUTDOWN_EVENT] = g_hShutdownEvent;
 
 	return pListenerArgs;
 }

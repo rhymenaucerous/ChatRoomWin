@@ -10,6 +10,11 @@
 #include <Windows.h>
 #include <stdio.h>
 
+// MACROs for array index of events in handle array.
+#define SUCCESS_EVENT 0
+#define SYNC_EVENT    1
+
+
 VOID
 ListenForChats(PVOID pListenerArgsHolder);
 

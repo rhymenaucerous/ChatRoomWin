@@ -16,6 +16,7 @@
 #include "s_main.h"
 
 extern volatile BOOL g_bServerState;
+extern HANDLE        g_hShutdownEvent;
 
 /**
  * .
@@ -98,7 +99,8 @@ WorkerWSARecv(PUSER pUser)
 		iResult = WSAGetLastError();
 		if (WSA_IO_PENDING != iResult)
 		{
-			DEBUG_ERROR("WSARecv failed");
+            DEBUG_ERROR("WSARecv failed");
+            SetEvent(g_hShutdownEvent);
 			g_bServerState = STOP;
 			return CLIENT_REMOVE_ERR;
 		}
@@ -224,7 +226,8 @@ WorkerPartialSend(PMSGHOLDER pMsgHolder, SOCKET ClientSocket)
 		iResult = WSAGetLastError();
 		if (WSA_IO_PENDING != iResult)
 		{
-			DEBUG_WSAERROR("WSASend failed");
+            DEBUG_WSAERROR("WSASend failed");
+            SetEvent(g_hShutdownEvent);
 			g_bServerState = STOP;
 			return CLIENT_REMOVE_ERR;
 		}
@@ -245,8 +248,9 @@ CheckforUser(PUSER pUser, PCHATMSG pChatMsg)
 			REJECT_SRV_FULL, 0, 0, NULL, NULL);
 	}
 
-	WORD wResult = HashTableNewEntry(pUser->m_pUsers->m_pUsersHTable, pUser,
-                          (PCHAR)pChatMsg->pszDataOne, pChatMsg->wLenOne);
+    WORD wResult = HashTableNewEntry(pUser->m_pUsers->m_pUsersHTable, pUser,
+                                     (PCHAR)pChatMsg->pszDataOne,
+                                     (pChatMsg->wLenOne) * sizeof(WCHAR));
 	ReleaseMutex(pUser->m_pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
 
 	if (SUCCESS != wResult)
@@ -487,8 +491,9 @@ HandleClientMessage(PUSER pUser, PCHATMSG pChatMsg)
 		return hResult;
 	}
 
-	PUSER pTargetUser = HashTableReturnEntry(pUser->m_pUsers->m_pUsersHTable,
-                             (PCHAR)pChatMsg->pszDataOne, pChatMsg->wLenOne);
+    PUSER pTargetUser = HashTableReturnEntry(
+        pUser->m_pUsers->m_pUsersHTable, (PCHAR)pChatMsg->pszDataOne,
+        (pChatMsg->wLenOne) * sizeof(WCHAR));
 
 	if (NULL == pTargetUser)
 	{
@@ -561,7 +566,7 @@ LogoutBroadcast(PUSERS pUsers, WORD wUserlen, PWCHAR pszUsername, WORD wMsgLen,
 				{
 					//NOTE: Error information will be printed, but the other
 					// client's IOCP packet can handle the failure.
-					DEBUG_ERROR("ManageMsgQueueAdd failed");
+					DEBUG_PRINT("ManageMsgQueueAdd failed");
 
 					if (S_OK != UsersTableReaderFinish(pUser->m_pUsers))
 					{
@@ -622,7 +627,8 @@ HandleLogout(PUSER pUser)
 	}
 
 	PUSER pTempUser = HashTableDestroyEntry(pUser->m_pUsers->m_pUsersHTable,
-		(PCHAR)pUser->m_caUsername, pUser->m_wUsernameLen);
+                                            (PCHAR)pUser->m_caUsername,
+                                            (pUser->m_wUsernameLen) * sizeof(WCHAR));
 	ReleaseMutex(pUser->m_pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
 
 	if (NULL == pTempUser)
@@ -633,7 +639,7 @@ HandleLogout(PUSER pUser)
 	}
 
 	UserFreeFunction((PVOID)pTempUser);
-	return LogoutBroadcast(pUsers, wUserlen, caUsername, 25,
+    return LogoutBroadcast(pUsers, wUserlen, caUsername, 24 * sizeof(WCHAR),
 		L"User has left the server");
 }
 
@@ -642,26 +648,25 @@ HandleLogout(PUSER pUser)
 //TODO: May need adjustment if table gets to big (updaing a list instead of
 // generating a new one each time.
 static PWCHAR
-CreateList(PHASHTABLE pUsersTable)
+CreateList(PHASHTABLE pUsersTable, PSIZE_T pUsersLen)
 {
-	//NOTE: Space allocated for:
-	// NULL terminator + ((Max username len + newline) * (number of users) *
-	// (size of WCHAR))
-	PWCHAR pUserList = HeapAlloc(GetProcessHeap(),
-		HEAP_ZERO_MEMORY,
-		(1 + ((MAX_UNAME_LEN + 1) * pUsersTable->m_wSize * sizeof(WCHAR))));
+	// NOTE: Space allocated for:
+	// NULL terminator + ((Max username len + newline) * (number of users))
+	SIZE_T cchUserListSize =
+		((MAX_UNAME_LEN + 1) * pUsersTable->m_wSize) + 1;
+	SIZE_T cbUserListSize = cchUserListSize * sizeof(WCHAR);
 
+	PWCHAR pUserList =
+		HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, cbUserListSize);
 	if (NULL == pUserList)
 	{
 		DEBUG_ERROR("HeapAlloc failed");
 		return NULL;
 	}
 
-	PWCHAR pUserListTracker = pUserList;
-	rsize_t rsLengthLeft = (1 + ((MAX_UNAME_LEN + 1) * pUsersTable->m_wSize *
-		sizeof(WCHAR)));
-	for (WORD wCounter = 0; wCounter < pUsersTable->m_wCapacity;
-		wCounter++)
+	PWCHAR  pUserListTracker = pUserList;
+	rsize_t rsLengthLeft     = cchUserListSize;
+	for (WORD wCounter = 0; wCounter < pUsersTable->m_wCapacity; wCounter++)
 	{
 		PLINKEDLIST pLinkedList = pUsersTable->m_ppTable[wCounter];
 
@@ -688,7 +693,8 @@ CreateList(PHASHTABLE pUsersTable)
 				}
 				pUserListTracker += pUser->m_wUsernameLen;
 				pUserListTracker[0] = L'\n';
-				pUserListTracker += 1;
+                pUserListTracker += 1;
+                *pUsersLen += pUser->m_wUsernameLen + 1;
 				rsLengthLeft -= (pUser->m_wUsernameLen + 1);
 			}
 		}
@@ -715,11 +721,12 @@ HandleList(PUSER pUser, PCHATMSG pChatMsg)
 	{
 		DEBUG_ERROR("UsersTableReaderStart failed");
 		return hResult;
-	}
+    }
 
-	PWCHAR pUserList = CreateList(pUser->m_pUsers->m_pUsersHTable);
-
-	if (NULL == pUserList)
+	SIZE_T stUserListLen = 0;
+    PWCHAR pUserList =
+        CreateList(pUser->m_pUsers->m_pUsersHTable, &stUserListLen);
+    if ((NULL == pUserList) || (0 == stUserListLen))
 	{
 		DEBUG_ERROR("CreateList failed");
 
@@ -728,24 +735,7 @@ HandleList(PUSER pUser, PCHATMSG pChatMsg)
 			DEBUG_ERROR("UsersTableReaderFinish failed");
 		}
 		return SRV_SHUTDOWN_ERR;
-	}
-
-	SIZE_T stUserListLen = 0;
-	if (FAILED(StringCchLengthW(pUserList, (1 + ((MAX_UNAME_LEN + 1) *
-		pUser->m_pUsers->m_pUsersHTable->m_wSize * sizeof(WCHAR))),
-		&stUserListLen)))
-	{
-		DEBUG_ERROR("StringCchLengthW failed");
-		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, (PVOID)&pUserList, (1 +
-			((MAX_UNAME_LEN + 1) * pUser->m_pUsers->m_pUsersHTable->m_wSize *
-				sizeof(WCHAR))));
-
-		if (S_OK != UsersTableReaderFinish(pUser->m_pUsers))
-		{
-			DEBUG_ERROR("UsersTableReaderFinish failed");
-		}
-		return SRV_SHUTDOWN_ERR;
-	}
+    }
 
 //NOTE: Current limitation is that packet data lens are max 65535 chars in len,
 // more design decisions would need to be made prior to increasing that size.
@@ -753,8 +743,8 @@ HandleList(PUSER pUser, PCHATMSG pChatMsg)
 // that list will not list all of them.
 #pragma warning(push)
 #pragma warning(disable : 4244)
-	hResult = ManageMsgQueueAdd(pUser, TYPE_LIST, STYPE_EMPTY, OPCODE_RES,
-		stUserListLen, 0, pUserList, NULL);
+    hResult = ManageMsgQueueAdd(pUser, TYPE_LIST, STYPE_EMPTY, OPCODE_RES,
+                                stUserListLen, 0, pUserList, NULL);
 #pragma warning(pop)
 	ZeroingHeapFree(GetProcessHeap(), NO_OPTION, (PVOID)&pUserList, (1 +
 		((MAX_UNAME_LEN + 1) * pUser->m_pUsers->m_pUsersHTable->m_wSize *
@@ -944,7 +934,7 @@ WorkerRecvOP(PUSER pUser, DWORD dwBytesTransferred)
 	}
 
 	ResetChatRecv(&pUser->m_RecvMsg);
-	//wprintf(L"type: %d, stype: %d, opcode: %d, msg lens: %u, %u\n",
+	//wprintf(L"type: %d, stype: %d, opcode: %d, msg lenses: %u, %u\n",
 	//	ChatMsgCopy.iType, ChatMsgCopy.iSubType, ChatMsgCopy.iOpcode,
 	//	ChatMsgCopy.wLenOne, ChatMsgCopy.wLenTwo);
 
@@ -1144,7 +1134,6 @@ ClientShutdown(PUSER pUser)
 	{
 		DWORD dwWaitResult = CustomWaitForSingleObject(
 			pUser->m_haSharedHandles[SEND_DONE_EVENT], INFINITE);
-
 		if (WAIT_OBJECT_0 != dwWaitResult)
 		{
 			DEBUG_ERROR("CustomWaitForSingleObject failed");
@@ -1154,9 +1143,8 @@ ClientShutdown(PUSER pUser)
 
 	PUSER pTempUser = HashTableDestroyEntry(pUser->m_pUsers->m_pUsersHTable,
                                             (PCHAR)pUser->m_caUsername,
-                                            pUser->m_wUsernameLen);
+                                            (pUser->m_wUsernameLen) * sizeof(WCHAR));
 	ReleaseMutex(pUser->m_pUsers->m_haUsersHandles[USERS_WRITE_MUTEX]);
-
 	if (NULL == pTempUser)
 	{
 		DEBUG_ERROR("HashTableDestroyEntry failed");
@@ -1188,7 +1176,7 @@ HandleClientShutdown(PUSER pUser, PMSGHOLDER pMsgHolder)
 				&pUser->m_plBeingDestroyed, DESTROYING, NOT_DESTROYING))
 			{
 				CustomConsoleWrite(L"WorkerThread(): Removing client due to: socket "
-					"failure.\n", 76);
+					"failure.\n", 57);
 				//NOTE: The previous value was zero, so we'll commence shutdown
 				//here.
 				//NOTE: possible values: server shutdown, s_ok
@@ -1196,7 +1184,8 @@ HandleClientShutdown(PUSER pUser, PMSGHOLDER pMsgHolder)
 				{
 					g_bServerState = STOP;
 				}
-				return LogoutBroadcast(pUsers, wUserlen, caUsername, 25,
+                return LogoutBroadcast(pUsers, wUserlen, caUsername,
+                                       24 * sizeof(WCHAR),
 					L"User has left the server");
 			}
 		}
@@ -1244,7 +1233,7 @@ HandleClientShutdown(PUSER pUser, PMSGHOLDER pMsgHolder)
 		}
 
 		UserFreeFunction((PVOID)pTempUser);
-		return LogoutBroadcast(pUsers, wUserlen, caUsername, 25,
+        return LogoutBroadcast(pUsers, wUserlen, caUsername, 24 * sizeof(WCHAR),
 			L"User has left the server");
 	}
 
@@ -1310,7 +1299,7 @@ WorkerThread(PVOID pParam)
 		case CLIENT_REMOVE_ERR:
 			//NOTE: Error that requires client shutdown but not server shutdown.
 			CustomConsoleWrite(L"WorkerThread(): Removing client due to: CLIENT_REMOVE_ERR",
-				58);
+				55);
 			if (SRV_SHUTDOWN_ERR == HandleClientShutdown(pUser, pMsgHolder))
 			{
 				DEBUG_ERROR("HandleClientShutdown failed");
@@ -1322,12 +1311,14 @@ WorkerThread(PVOID pParam)
 			//NOTE: Error that requires server shutdown.
 			DEBUG_PRINT("WorkerThread(): Server shutting "
 				"down");
-			g_bServerState = STOP;
+            g_bServerState = STOP;
+            SetEvent(g_hShutdownEvent);
 			break;
 
 		default:
 			DEBUG_PRINT("WorkerThread(): Unknown error, server shutting down");
-			g_bServerState = STOP;
+            g_bServerState = STOP;
+            SetEvent(g_hShutdownEvent);
 			break;
 		}
 	}

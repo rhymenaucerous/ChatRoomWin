@@ -260,9 +260,6 @@ PacketHeapFree(PCHATMSG pChatMsg)
         ZeroingHeapFree(GetProcessHeap(), NO_OPTION,
                         (PVOID)&pChatMsg->pszDataOne,
                         (pChatMsg->wLenOne + 1) * sizeof(WCHAR));
-        ZeroingHeapFree(GetProcessHeap(), NO_OPTION,
-                        (PVOID)&pChatMsg->pszDataTwo,
-                        (pChatMsg->wLenTwo + 1) * sizeof(WCHAR));
 	}
 
 	if (0 != pChatMsg->wLenTwo)
@@ -335,7 +332,8 @@ BlockingRecv(WSAEVENT hReadEvent,
 {
 	//NOTE: Don't need to release handle here as it will be released at the end
 	//of program execution along with the stack.
-	DWORD dwSocketWait = WaitForSingleObject(hReadEvent, LISTEN_TIMEOUT);
+    DWORD dwSocketWait = CustomWaitForSingleObject(hReadEvent, INFINITE);
+    WSAResetEvent(hReadEvent);
 	switch (dwSocketWait)
 	{
 	case WAIT_OBJECT_0:
@@ -346,11 +344,6 @@ BlockingRecv(WSAEVENT hReadEvent,
 		//NOTE: The server could just be very busy. Wait until connection is broken
 		//to shutdown client.
 		DEBUG_ERROR("Network issue: Server did not acknowledge message within timeout period");
-		if (FALSE == WSAResetEvent(hReadEvent))
-		{
-			DEBUG_WSAERROR("WSAResetEvent failed");
-			return E_FAIL;
-		}
 		return E_UNEXPECTED;
 
 	case WAIT_ABANDONED_0:
@@ -359,12 +352,6 @@ BlockingRecv(WSAEVENT hReadEvent,
 
 	case WAIT_FAILED:
 		DEBUG_ERROR("WAIT_FAILED");
-		return E_FAIL;
-	}
-
-	if (FALSE == WSAResetEvent(hReadEvent))
-	{
-		DEBUG_WSAERROR("WSAResetEvent failed");
 		return E_FAIL;
 	}
 
@@ -530,7 +517,6 @@ ClientRecvPacket(SOCKET RecvSock, PCHATMSG pChatMsg, WSAEVENT hReadEvent)
 
 	HRESULT hResult = RecvHeader(RecvSock, pChatMsg,
 		hReadEvent, pdwFlags, wsaRecvBuffer);
-
 	if (S_OK != hResult)
 	{
 		//NOTE: Calling function can handle difference between
@@ -552,8 +538,8 @@ ClientRecvPacket(SOCKET RecvSock, PCHATMSG pChatMsg, WSAEVENT hReadEvent)
 		return hResult;
 	}
 
-	hResult = RecvBody(RecvSock, pChatMsg, hReadEvent,
-		pdwFlags, wsaRecvBuffer, dwBytesOne, dwBytesTwo);
+	hResult = RecvBody(RecvSock, pChatMsg, hReadEvent, pdwFlags, wsaRecvBuffer,
+                       dwBytesOne, dwBytesTwo);
 	if (S_OK != hResult)
 	{
 		//NOTE: Calling function can handle difference between
@@ -706,7 +692,6 @@ ListenThreadRecvPacket(SOCKET RecvSock, PCHATMSG pChatMsg)
 
 	HRESULT hResult = ListenRecvHeader(RecvSock, pChatMsg,
 		pdwFlags, wsaRecvBuffer);
-
 	if (S_OK != hResult)
 	{
 		//NOTE: Calling function can handle difference between

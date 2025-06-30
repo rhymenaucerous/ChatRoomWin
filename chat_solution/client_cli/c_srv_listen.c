@@ -18,6 +18,7 @@
 #include "..\networking\networking.h"
 
 extern volatile BOOL g_bClientState;
+extern HANDLE        g_hShutdownEvent;
 
  //NOTE: Function that listens for chats and broadcasts and pritns them
  //to the console.
@@ -25,12 +26,10 @@ VOID
 ListenForChats(PVOID pListenerArgsHolder)
 {
 	PLISTENERARGS pListenerArgs = (PLISTENERARGS)pListenerArgsHolder;
-
 	if (NULL == pListenerArgs)
 	{
 		DEBUG_ERROR("Invalid listener args");
-		InterlockedExchange((PLONG)&g_bClientState, STOP);
-		return;
+        goto EXIT;
 	}
 
 	WCHAR MyBuff[BUFF_SIZE] = { 0 };
@@ -46,6 +45,21 @@ ListenForChats(PVOID pListenerArgsHolder)
 	DWORD dwFlags = MSG_PEEK;
 	PDWORD pdwFlags = &dwFlags;
 
+	// Event handles for listening to server messages.
+    HANDLE haReadHandles[3]      = {0};
+    haReadHandles[SUCCESS_EVENT] = pListenerArgs->m_hHandles[READ_EVENT];
+    haReadHandles[SYNC_EVENT] =
+        pListenerArgs->m_hHandles[ULISTEN_WAIT_FINISHED];
+    haReadHandles[SHUTDOWN_EVENT] = g_hShutdownEvent;
+
+    // Event handles for getting socket mutex.
+    HANDLE haSocketHandles[3]      = {0};
+    haSocketHandles[SUCCESS_EVENT] = pListenerArgs->m_hHandles[SOCKET_MUTEX];
+    haSocketHandles[SYNC_EVENT] =
+        pListenerArgs->m_hHandles[ULISTEN_WAIT_FINISHED];
+    haSocketHandles[SHUTDOWN_EVENT] = g_hShutdownEvent;
+
+
 	//NOTE: While the client is running, we'll continue to listen for data
 	//from the server to print to the console.
 	while (CONTINUE == InterlockedCompareExchange((PLONG)&g_bClientState,
@@ -53,71 +67,61 @@ ListenForChats(PVOID pListenerArgsHolder)
 	{
 		SecureZeroMemory(MyBuff, BUFF_SIZE);
 
-		//NOTE: Ensures that we're reseting each time.
-		if (FALSE == WSAResetEvent(pListenerArgs->m_hHandles[READ_EVENT]))
-		{
-			DEBUG_WSAERROR("WSAResetEvent failed");
-			InterlockedExchange((PLONG)&g_bClientState, STOP);
-			return;
-		}
+		DWORD dwWaitObject = CustomWaitForSingleObject(
+            pListenerArgs->m_hHandles[ULISTEN_WAITING], INFINITE);
+        if (WAIT_OBJECT_0 != dwWaitObject)
+        {
+            if (WAIT_FAILED == dwWaitObject)
+            {
+                DEBUG_WSAERROR(
+                    "CustomWaitForSingleObject failed: ULISTEN_WAITING");
+            }
+            goto FAIL;
+        }
 
-		//NOTE: waiting for the socket and the event that FD_READ is on the
-		//socket.
-		DWORD dwSocketWait = WaitForMultipleObjects(NUM_WAIT_HANDLES,
-			pListenerArgs->m_hHandles, TRUE, INFINITE);
-		if (STOP == InterlockedCompareExchange((PLONG)&g_bClientState,
-			STOP, STOP))
-		{
-			break;
-		}
+		// Wait for the read event to be signaled.
+		DWORD dwReadReady = WaitForMultipleObjects(3, haReadHandles, FALSE, INFINITE);
+        WSAResetEvent(pListenerArgs->m_hHandles[READ_EVENT]);
+		if (WAIT_OBJECT_0 == dwReadReady)
+        {
+            // Wait for the socket mutex to be available.
+            DWORD dwSocketWait =
+                WaitForMultipleObjects(3, haSocketHandles, FALSE, INFINITE);
+			if (WAIT_OBJECT_0 == dwSocketWait)
+            {
 
-		switch (dwSocketWait)
-		{
-		case WAIT_OBJECT_0:
-			//NOTE: The listener received a message packet.
-            hResult =
-                ListenThreadRecvPacket(pListenerArgs->m_ServerSocket, &ChatMsg);
-			ReleaseMutex(pListenerArgs->m_hHandles[SOCKET_MUTEX]);
-			if (S_OK != hResult)
-			{
-				DEBUG_WSAERROR("WSARecv failed");
-				InterlockedExchange((PLONG)&g_bClientState, STOP);
-				return;
+                // NOTE: The listener received a message packet.
+                hResult = ListenThreadRecvPacket(pListenerArgs->m_ServerSocket,
+                                                 &ChatMsg);
+                ReleaseMutex(pListenerArgs->m_hHandles[SOCKET_MUTEX]);
+                WSAResetEvent(pListenerArgs->m_hHandles[READ_EVENT]);
+                if (S_OK != hResult)
+                {
+                    DEBUG_PRINT("ListenThreadRecvPacket failed");
+                    goto FAIL;
+                }
 			}
-			break;
-
-		case WAIT_TIMEOUT:
-			//NOTE: Checks to see if the connection has been reset.
-			dwFlags = MSG_PEEK;
-			iResult = WSARecv(pListenerArgs->m_ServerSocket, TestBuf,
-				NO_OPTION, NULL, pdwFlags, NULL, NULL);
-			ReleaseMutex(pListenerArgs->m_hHandles[SOCKET_MUTEX]);
-			if (SOCKET_ERROR == iResult)
+            else if (WAIT_OBJECT_0 + SYNC_EVENT == dwReadReady)
+            {
+                continue;
+            }
+            else
 			{
-				INT wsaLastError = WSAGetLastError();
-				if (WSAECONNRESET == wsaLastError)
-				{
-					DEBUG_ERROR_SUPPLIED(wsaLastError, "WSARecv failed");
-					InterlockedExchange((PLONG)&g_bClientState, STOP);
-					return;
-				}
-			}
-			//NOTE: Loop would continue here, but there are multiple cases for
-			//which the event will be reset.
-			break;
-
-		default:
-			ReleaseMutex(pListenerArgs->m_hHandles[SOCKET_MUTEX]);
-			DEBUG_WSAERROR("WSARecv failed");
-			InterlockedExchange((PLONG)&g_bClientState, STOP);
-			return;
+				DEBUG_ERROR("WaitForSingleObject failed");
+                goto FAIL;
+            }
+		}
+        else if (WAIT_OBJECT_0 + SYNC_EVENT == dwReadReady)
+        {
+            continue;
+		}
+		else
+        {
+            DEBUG_WSAERROR("WaitForSingleObject failed: ReadEvent");
+            goto FAIL;
 		}
 
-		if (WAIT_TIMEOUT == dwSocketWait)
-		{
-			continue;
-		}
-
+		// Message properly received from server
 		if ((ChatMsg.iType == TYPE_CHAT) &&
 			(ChatMsg.iSubType == STYPE_EMPTY) &&
 			(ChatMsg.iOpcode == OPCODE_RES))
@@ -128,8 +132,7 @@ ListenForChats(PVOID pListenerArgsHolder)
 			if (FALSE == PacketHeapFree(&ChatMsg))
 			{
 				DEBUG_ERROR("PacketHeapFree failed");
-				InterlockedExchange((PLONG)&g_bClientState, STOP);
-				return;
+                goto FAIL;
 			}
 		}
 		else
@@ -138,6 +141,13 @@ ListenForChats(PVOID pListenerArgsHolder)
 				"\n", 46);
 		}
 	}
+
+	goto EXIT;
+FAIL:
+    InterlockedExchange((PLONG)&g_bClientState, STOP);
+    SetEvent(g_hShutdownEvent);
+EXIT:
+    return;
 }
 
 //End of file

@@ -18,7 +18,15 @@
 #include "c_connect.h"
 #include "c_register.h"
 
-volatile BOOL g_bClientState = CONTINUE;
+volatile BOOL g_bClientState   = CONTINUE;
+HANDLE        g_hShutdownEvent = NULL;
+
+DWORD CustomWaitForSingleObject(HANDLE hInputEvent, DWORD dwTimeout)
+{
+    HANDLE hEvents[2] = {hInputEvent, g_hShutdownEvent};
+
+    return WaitForMultipleObjects(2, hEvents, FALSE, dwTimeout);
+}
 
 /**
  * .
@@ -62,27 +70,32 @@ GracefulShutdown(_In_ DWORD dwCtrlType)
 		// g_bServerState.
 	case CTRL_C_EVENT:
 		InterlockedExchange((PLONG)&g_bClientState, STOP);
+        SetEvent(g_hShutdownEvent);
 		DEBUG_PRINT("Ctrl+C Observed!");
 		return TRUE;
 
 	case CTRL_CLOSE_EVENT:
 		//NOTE: User closed the console.
-		InterlockedExchange((PLONG)&g_bClientState, STOP);
+        InterlockedExchange((PLONG)&g_bClientState, STOP);
+        SetEvent(g_hShutdownEvent);
 		return TRUE;
 
 	case CTRL_BREAK_EVENT:
-		InterlockedExchange((PLONG)&g_bClientState, STOP);
+        InterlockedExchange((PLONG)&g_bClientState, STOP);
+        SetEvent(g_hShutdownEvent);
 		DEBUG_PRINT("Ctrl+break Observed!");
 		return TRUE;
 
 	case CTRL_LOGOFF_EVENT:
 		//NOTE: User logged off.
-		InterlockedExchange((PLONG)&g_bClientState, STOP);
+        InterlockedExchange((PLONG)&g_bClientState, STOP);
+        SetEvent(g_hShutdownEvent);
 		return TRUE;
 
 	case CTRL_SHUTDOWN_EVENT:
 		//NOTE: System shutdown.
-		InterlockedExchange((PLONG)&g_bClientState, STOP);
+        InterlockedExchange((PLONG)&g_bClientState, STOP);
+        SetEvent(g_hShutdownEvent);
 		return TRUE;
 
 	default:
@@ -175,19 +188,17 @@ ClientShutdown(PCLIENTCHATARGS pChatArgs, PLISTENERARGS pListenerArgs,
 }
 
 INT
-wmain(INT argc, PTSTR argv[]) {
-
+wmain(INT argc, PTSTR argv[])
+{
+    g_hShutdownEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	if (!SetConsoleCtrlHandler(GracefulShutdown, TRUE))
 	{
 		DEBUG_ERROR("CreateThread failed");
 		return ERR_GENERIC;
 	}
 
-	//Accepts command line arguments
-	DEBUG_PRINT("\n");
 	PCLIENTCHATARGS pChatArgs = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
 		sizeof(CLIENTCHATARGS));
-
 	if (NULL == pChatArgs)
 	{
 		DEBUG_ERROR("CloseHandle failed");
@@ -257,12 +268,12 @@ wmain(INT argc, PTSTR argv[]) {
 		DEBUG_WSAERROR("WSASetEvent failed");
 	}
 
-	if (WAIT_OBJECT_0 != WaitForSingleObject(hListenerThread, INFINITE))
+	if (WAIT_FAILED == CustomWaitForSingleObject(hListenerThread, INFINITE))
 	{
 		DEBUG_ERROR("WaitForSingleObject failed");
 	}
 
-	if (FALSE != CloseHandle(hListenerThread))
+	if (FALSE == CloseHandle(hListenerThread))
 	{
 		DEBUG_ERROR("CloseHandle failed");
 	}

@@ -348,7 +348,7 @@ ServerShutDown(PSERVERCHATARGS pServerArgs, PUSERS pUsers)
 		DEBUG_PRINT("HashTableDestroy failed");
 	}
 
-	NetCleanup(pServerArgs->m_ListenSocket, INVALID_SOCKET);
+	NetCleanup(pServerArgs->m_ListenSocket, DO_CLEAN);
 
 	//NOTE: All server processes have now been shutdown, now let's free the
 	// memory.
@@ -376,7 +376,6 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 	{
         SOCKET ClientSocket =
             NetAccept(pServerArgs->m_ListenSocket, g_bServerState, g_hShutdownEvent);
-
 		//NOTE: Errors that are not fatal are handled within NetAccept.
 		if (INVALID_SOCKET == ClientSocket)
 		{
@@ -426,7 +425,6 @@ ServerListen(PSERVERCHATARGS pServerArgs)
 		HANDLE hResult = CreateIoCompletionPort((HANDLE)pUser->m_ClientSocket,
 			pServerArgs->m_haSharedHandles[IOCP_HANDLE], (ULONG_PTR)pUser,
 			NO_OPTION);
-
 		if (NULL == hResult)
 		{
 			DEBUG_ERROR("CreateIoCompletionPort failed");

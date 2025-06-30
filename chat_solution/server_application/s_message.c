@@ -76,8 +76,9 @@ AddMsgToQueue(PUSER pUser, INT8 iType, INT8 iSubType,
 
 	//NOTE: wcscpy_s requires inclusion of terminating NULL byte in length.
 	if (0 < wLenOne)
-	{
-		errno_t eResult = wcscpy_s(pMsgHolder->m_pBodyBufferOne, (wLenOne + 1),
+    {
+        errno_t eResult =
+            wcscpy_s(pMsgHolder->m_pBodyBufferOne, BUFF_SIZE + 1,
 			pszDataOne);
 		if (0 != eResult)
         {
@@ -87,7 +88,8 @@ AddMsgToQueue(PUSER pUser, INT8 iType, INT8 iSubType,
 	}
 	if (0 < wLenTwo)
 	{
-		errno_t eResult = wcscpy_s(pMsgHolder->m_pBodyBufferTwo, (wLenTwo + 1),
+        errno_t eResult =
+            wcscpy_s(pMsgHolder->m_pBodyBufferTwo, BUFF_SIZE + 1,
 			pszDataTwo);
 		if (0 != eResult)
         {
@@ -129,7 +131,12 @@ ManageMsgQueueAdd(PUSER pUser, INT8 iType, INT8 iSubType,
 	// future.
 	if (WAIT_OBJECT_0 != dwWaitResult)
 	{
-        DEBUG_ERROR("WaitForSingleObject()");
+        if ((WAIT_OBJECT_0 + 1) != dwWaitResult)
+		{
+            DEBUG_PRINT("shutdown observed");
+            return SRV_SHUTDOWN_ERR;
+		}
+        DEBUG_ERROR("CustomWaitForSingleObject()");
 		return SRV_SHUTDOWN_ERR;
 	}
 

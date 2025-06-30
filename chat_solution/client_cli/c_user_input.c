@@ -15,6 +15,7 @@
 #include "c_main.h"
 
 extern volatile BOOL g_bClientState;
+extern HANDLE        g_hShutdownEvent;
 
 //NOTE: Following function acts like strtok() but is safer - we have a simple
 //use for it.
@@ -143,7 +144,7 @@ HandleSrvReturn(PLISTENERARGS pListenerArgs, CHATMSG ExpectedReturn)
 				(RecvChat.iSubType == STYPE_EMPTY) &&
 				(RecvChat.iOpcode == OPCODE_RES)) //NOTE: Handling list case
 			{
-				CustomConsoleWrite(RecvChat.pszDataOne, RecvChat.wLenOne);
+                CustomConsoleWrite(RecvChat.pszDataOne, RecvChat.wLenOne);
 			}
 
 			break;
@@ -158,7 +159,6 @@ HandleSrvReturn(PLISTENERARGS pListenerArgs, CHATMSG ExpectedReturn)
 			DEBUG_ERROR("Failure: Invalid packet received from server");
 			break;
 		}
-
 		if (FALSE == PacketHeapFree(&RecvChat))
 		{
 			DEBUG_ERROR("PacketHeapFree failed");
@@ -174,8 +174,9 @@ HandleMsg(PLISTENERARGS pListenerArgs, WORD wLenUser, PWSTR pszUser,
 	WORD wLenMsg, PWSTR pszMsg)
 {
 	HANDLE hSocketHandle = pListenerArgs->m_hHandles[SOCKET_MUTEX];
-	DWORD dwWaitObj = WaitForSingleObject(hSocketHandle, INFINITE);
-
+    DWORD  dwWaitObj     = CustomWaitForSingleObject(hSocketHandle, INFINITE);
+    ResetEvent(pListenerArgs->m_hHandles[ULISTEN_WAITING]);
+    SetEvent(pListenerArgs->m_hHandles[ULISTEN_WAIT_FINISHED]);
 	switch(dwWaitObj)
 	{
     case WAIT_OBJECT_0:
@@ -217,7 +218,9 @@ static HRESULT
 HandleBroadcast(PLISTENERARGS pListenerArgs, WORD wLenMsg, PWSTR pszMsg)
 {
 	HANDLE hSocketHandle = pListenerArgs->m_hHandles[SOCKET_MUTEX];
-	DWORD dwWaitObj = WaitForSingleObject(hSocketHandle, INFINITE);
+    DWORD  dwWaitObj     = CustomWaitForSingleObject(hSocketHandle, INFINITE);
+    ResetEvent(pListenerArgs->m_hHandles[ULISTEN_WAITING]);
+    SetEvent(pListenerArgs->m_hHandles[ULISTEN_WAIT_FINISHED]);
 
 	switch (dwWaitObj)
 	{
@@ -243,7 +246,6 @@ HandleBroadcast(PLISTENERARGS pListenerArgs, WORD wLenMsg, PWSTR pszMsg)
 	ExpectedReturn.iType = TYPE_BROADCAST;
 	ExpectedReturn.iSubType = STYPE_EMPTY;
 	ExpectedReturn.iOpcode = OPCODE_ACK;
-
 	HRESULT hReturn = HandleSrvReturn(pListenerArgs, ExpectedReturn);
 	ReleaseMutex(hSocketHandle);
 
@@ -260,7 +262,9 @@ static HRESULT
 HandleList(PLISTENERARGS pListenerArgs)
 {
 	HANDLE hSocketHandle = pListenerArgs->m_hHandles[SOCKET_MUTEX];
-	DWORD dwWaitObj = WaitForSingleObject(hSocketHandle, INFINITE);
+    DWORD  dwWaitObj     = CustomWaitForSingleObject(hSocketHandle, INFINITE);
+    ResetEvent(pListenerArgs->m_hHandles[ULISTEN_WAITING]);
+    SetEvent(pListenerArgs->m_hHandles[ULISTEN_WAIT_FINISHED]);
 
 	switch (dwWaitObj)
 	{
@@ -302,7 +306,9 @@ static HRESULT
 HandleQuit(PLISTENERARGS pListenerArgs)
 {
 	HANDLE hSocketHandle = pListenerArgs->m_hHandles[SOCKET_MUTEX];
-	DWORD dwWaitObj = WaitForSingleObject(hSocketHandle, INFINITE);
+    DWORD  dwWaitObj     = CustomWaitForSingleObject(hSocketHandle, INFINITE);
+    ResetEvent(pListenerArgs->m_hHandles[ULISTEN_WAITING]);
+    SetEvent(pListenerArgs->m_hHandles[ULISTEN_WAIT_FINISHED]);
 	HRESULT hResult = S_OK;
 
 	switch (dwWaitObj)
@@ -353,6 +359,7 @@ PrintHelp()
 HRESULT
 UserListen(PLISTENERARGS pListenerArgs)
 {
+    HRESULT hResult = E_FAIL;
 	if (NULL == pListenerArgs)
 	{
 		//NOTE: Not using thread print bc we can dereference a NULL pointer
@@ -364,27 +371,19 @@ UserListen(PLISTENERARGS pListenerArgs)
 	WCHAR caUserInputBuffer[BUFF_SIZE] = { 0 };
 	DWORD wNumberofCharsRead = 0;
 	BOOL bResult = FALSE;
-	HANDLE hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-	HRESULT hResult = S_OK;
-
-	if (INVALID_HANDLE_VALUE == hStdInput)
-	{
-		DEBUG_ERROR("Input NULL");
-		InterlockedExchange((PLONG)&g_bClientState, STOP);
-		return E_HANDLE;
-	}
 
 	while (CONTINUE == InterlockedCompareExchange((PLONG)&g_bClientState,
 		CONTINUE, CONTINUE))
-	{
-		bResult = ReadConsoleW(hStdInput, caUserInputBuffer, (BUFF_SIZE - 1),
-			&wNumberofCharsRead, NULL);
-
+    {
+        ResetEvent(pListenerArgs->m_hHandles[ULISTEN_WAIT_FINISHED]);
+        SetEvent(pListenerArgs->m_hHandles[ULISTEN_WAITING]);
+        bResult =
+            ReadConsoleW(GetStdHandle(STD_INPUT_HANDLE), caUserInputBuffer,
+                         (BUFF_SIZE - 1), &wNumberofCharsRead, NULL);
 		if (FALSE == bResult)
 		{
-			DEBUG_ERROR("ReadConsoleW failed");
-			InterlockedExchange((PLONG)&g_bClientState, STOP);
-			return E_FAIL;
+            DEBUG_ERROR("ReadConsoleW failed");
+            goto EXIT;
 		}
 
 		if ((STOP == InterlockedCompareExchange((PLONG)&g_bClientState,
@@ -418,9 +417,8 @@ UserListen(PLISTENERARGS pListenerArgs)
 				wMsgLen, (PWSTR)caMsg);
 			if (S_OK != hResult)
 			{
-				DEBUG_ERROR("HandleMsg failed");
-				InterlockedExchange((PLONG)&g_bClientState, STOP);
-				return hResult;
+                DEBUG_ERROR("HandleMsg failed");
+                goto EXIT;
 			}
 		}
 		else if (STRINGS_EQUAL == wcsncmp(L"/broadcast ", caUserInputBuffer,
@@ -433,9 +431,8 @@ UserListen(PLISTENERARGS pListenerArgs)
 				(caUserInputBuffer + 11));
 			if (S_OK != hResult)
 			{
-				DEBUG_ERROR("HandleBroadcast failed");
-				InterlockedExchange((PLONG)&g_bClientState, STOP);
-				return hResult;
+                DEBUG_ERROR("HandleBroadcast failed");
+                goto EXIT;
 			}
 		}
 		else if (STRINGS_EQUAL == wcsncmp(L"/list", caUserInputBuffer,
@@ -445,20 +442,18 @@ UserListen(PLISTENERARGS pListenerArgs)
 			if (S_OK != hResult)
 			{
 				DEBUG_ERROR("HandleList failed");
-				InterlockedExchange((PLONG)&g_bClientState, STOP);
-				return hResult;
+				goto EXIT;
 			}
 		}
 		else if (STRINGS_EQUAL == wcsncmp(L"/quit", caUserInputBuffer,
 			CMD_2_LEN))
 		{
 			hResult = HandleQuit(pListenerArgs);
-			InterlockedExchange((PLONG)&g_bClientState, STOP);
 			if (S_OK != hResult)
 			{
 				DEBUG_ERROR("HandleQuit failed");
-				return hResult;
 			}
+            goto EXIT;
 		}
 		else
 		{
@@ -466,7 +461,11 @@ UserListen(PLISTENERARGS pListenerArgs)
 		}
 	}
 
-	return S_OK;
+	hResult =  S_OK;
+EXIT:
+    InterlockedExchange((PLONG)&g_bClientState, STOP);
+    SetEvent(g_hShutdownEvent);
+    return hResult;
 }
 
 //End of file
