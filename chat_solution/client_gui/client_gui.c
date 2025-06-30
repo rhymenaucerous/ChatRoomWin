@@ -1,11 +1,16 @@
 // client_gui.cpp : Defines the entry point for the application.
 //
 
+#include "c_shared.h"
+#include "c_main.h"
 #include "framework.h"
 #include "client_gui.h"
 #include <stdio.h>
 #include <commctrl.h>
 #include <dwmapi.h>
+#include <windows.h>
+#include <io.h>
+#include <fcntl.h>
 
 #pragma comment(lib, "dwmapi.lib")
 
@@ -21,41 +26,77 @@ HWND hStatusBox;                                // Status display box
 #define IDC_INPUTBOX 1001                       // Control ID for input box
 #define IDC_DISPLAYBOX 1002                     // Control ID for display box
 #define IDC_STATUSBOX 1003                      // Control ID for status box
-#define IDM_SEND_MESSAGE        110
-
-// Helper function to append text to display box
-void AppendToDisplay(const WCHAR* text) {
-    WCHAR displayText[4096];
-    GetWindowTextW(hDisplayBox, displayText, 4096);
-    wcscat_s(displayText, 4096, text);
-    wcscat_s(displayText, 4096, L"\r\n");
-    SetWindowTextW(hDisplayBox, displayText);
-}
+#define IDM_SEND_MESSAGE 110
 
 // Forward declarations of functions included in this code module:
-ATOM                MyRegisterClass(HINSTANCE hInstance);
-BOOL                InitInstance(HINSTANCE, int);
-LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
-LRESULT CALLBACK InputBoxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+ATOM             MyRegisterClass(HINSTANCE hInstance);
+BOOL             InitInstance(HINSTANCE, int);
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK InputBoxSubclassProc(HWND      hWnd,
+                                      UINT      uMsg,
+                                      WPARAM    wParam,
+                                      LPARAM    lParam,
+                                      UINT_PTR  uIdSubclass,
+                                      DWORD_PTR dwRefData);
+
+// Used to signal input receivers that input is ready to be processed
+HANDLE g_hInputReadyEvent = NULL;
 
 // String to display title
 const WCHAR szAsciiTitle[] =
-L"   ___ _           _     __                      __    __ _       \r\n"
-L"  / __\\ |__   __ _| |_  /__\\ ___   ___  _ __ ___/ / /\\ \\ (_)_ __  \r\n"
-L" / /  | '_ \\ / _` | __|/ \\/// _ \\ / _ \\| '_ ` _ \\ \\/  \\/ / | '_ \\ \r\n"
-L"/ /___| | | | (_| | |_/ _  \\ (_) | (_) | | | | | \\  /\\  /| | | | |\r\n"
-L"\\____/|_| |_|\\__,_|\\__\\/ \\_/\\___/ \\___/|_| |_| |_|\\/  \\/ |_|_| |_|\r\n";
+    L"   ___ _           _     __                      __    __ _       \r\n"
+    L"  / __\\ |__   __ _| |_  /__\\ ___   ___  _ __ ___/ / /\\ \\ (_)_ __  "
+    L"\r\n"
+    L" / /  | '_ \\ / _` | __|/ \\/// _ \\ / _ \\| '_ ` _ \\ \\/  \\/ / | '_ "
+    L"\\ \r\n"
+    L"/ /___| | | | (_| | |_/ _  \\ (_) | (_) | | | | | \\  /\\  /| | | | |\r\n"
+    L"\\____/|_| |_|\\__,_|\\__\\/ \\_/\\___/ \\___/|_| |_| |_|\\/  \\/ |_|_| "
+    L"|_|\r\n";
+
+extern HANDLE g_hShutdownEvent;
+
+void CreateDebugConsole()
+{
+    // Allocate a new console for the GUI application
+    if (AllocConsole())
+    {
+        FILE* pCout, * pCerr, * pCin;
+
+        // Redirect stdout to the new console
+        freopen_s(&pCout, "CONOUT$", "w", stdout);
+        
+        // Redirect stderr to the new console
+        freopen_s(&pCerr, "CONOUT$", "w", stderr);
+        
+        // Redirect stdin to the new console
+        freopen_s(&pCin, "CONIN$", "r", stdin);
+
+        // Optional: Set the console title
+        SetConsoleTitle(L"Debug Console");
+
+        // From this point on, printf, fprintf(stderr, ...), and scanf will work.
+        printf("Debug console initialized.\n");
+    }
+}
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
                      _In_ LPWSTR    lpCmdLine,
                      _In_ int       nCmdShow)
 {
+#ifdef _DEBUG
+    // Create the debug console at the very start of the application
+    CreateDebugConsole();
+#endif
+
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-    // TODO: Place code here.
+    g_hInputReadyEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeClient, NULL, 0,
+                 NULL);
 
     // Initialize global strings
     LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
@@ -198,6 +239,15 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     static HBRUSH hbrStatusBkgnd = NULL; // Add this line
+    BOOL          bReturn = FALSE;
+
+    if (WAIT_OBJECT_0 == WaitForSingleObject(g_hShutdownEvent, 0))
+    {
+        DestroyWindow(hWnd);
+        bReturn = TRUE;
+        goto EXIT;
+
+    }
 
     switch (message)
     {
@@ -209,20 +259,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             {
             case IDM_SEND_MESSAGE:
                 {
-                    WCHAR buffer[1024];
-                    GetWindowTextW(hInputBox, buffer, 1024);
-                    
-                    // Append the actual input text if it's not empty
-                    if (wcslen(buffer) > 0)
-                    {
-                        AppendToDisplay(buffer);
-                    }
-                    
-                    // Clear input box
-                    SetWindowTextW(hInputBox, L"");
-
-                    // Set focus back to the input box after sending
-                    SetFocus(hInputBox);
+                    SetEvent(g_hInputReadyEvent);
                 }
                 break;
             case IDM_ABOUT:
@@ -234,18 +271,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             default:
                 return DefWindowProc(hWnd, message, wParam, lParam);
             }
-        }
-        break;
-    case WM_KEYDOWN:
-        MessageBoxW(hWnd, L"Key was pressed!", L"Debug Alert", MB_OK);
-        // Check if the pressed key is Enter (VK_RETURN)
-        // And if the input box currently has focus
-        if (wParam == VK_RETURN && GetFocus() == hInputBox)
-        {
-            // Simulate the IDM_SEND_MESSAGE command
-            // This reuses the existing logic for sending messages
-            SendMessage(hWnd, WM_COMMAND, IDM_SEND_MESSAGE, 0);
-            return 0; // Message handled
         }
         break;
     case WM_PAINT:
@@ -286,7 +311,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
-    return 0;
+
+EXIT:
+    return bReturn;
 }
 
 // Message handler for about box.
@@ -317,17 +344,7 @@ LRESULT CALLBACK InputBoxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
     case WM_KEYDOWN:
         if (wParam == VK_RETURN)
         {
-            WCHAR buffer[1024];
-            GetWindowTextW(hWnd, buffer, 1024); // Use hWnd of the control itself
-
-            // Append the actual input text if it's not empty
-            if (wcslen(buffer) > 0)
-            {
-                AppendToDisplay(buffer);
-            }
-
-            // Clear input box
-            SetWindowTextW(hWnd, L"");
+            SetEvent(g_hInputReadyEvent);
 
             // We've handled the message, so we don't pass it on.
             return 0; 

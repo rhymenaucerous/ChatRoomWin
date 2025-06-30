@@ -80,7 +80,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);Comctl32.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);$(SolutionDir)$(Platform)\$(Configuration)\hashtable.lib;$(SolutionDir)$(Platform)\$(Configuration)\linkedlist.lib;$(SolutionDir)$(Platform)\$(Configuration)\networking.lib;Ws2_32.lib;Comctl32.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -109,7 +109,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);Comctl32.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);$(SolutionDir)$(Platform)\$(Configuration)\hashtable.lib;$(SolutionDir)$(Platform)\$(Configuration)\linkedlist.lib;$(SolutionDir)$(Platform)\$(Configuration)\networking.lib;Ws2_32.lib;Comctl32.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -129,12 +129,29 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="client_gui.h" />
+    <ClInclude Include="c_connect.h" />
+    <ClInclude Include="c_main.h" />
+    <ClInclude Include="c_messages.h" />
+    <ClInclude Include="c_register.h" />
+    <ClInclude Include="c_shared.h" />
+    <ClInclude Include="c_srv_listen.h" />
+    <ClInclude Include="c_user_input.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="Messages.h" />
+    <ClInclude Include="Queue.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="client_gui.c" />
+    <ClCompile Include="c_connect.c" />
+    <ClCompile Include="c_main.c" />
+    <ClCompile Include="c_messages.c" />
+    <ClCompile Include="c_register.c" />
+    <ClCompile Include="c_srv_listen.c" />
+    <ClCompile Include="c_user_input.c" />
+    <ClCompile Include="Messages.c" />
+    <ClCompile Include="Queue.c" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="client_gui.rc" />
