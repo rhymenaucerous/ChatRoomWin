@@ -16,6 +16,12 @@
 #ifndef IDC_STATIC
 #define IDC_STATIC				-1
 #endif
+
+#define IDD_CONNECTION_DIALOG   130
+#define IDC_IP_EDIT             1004
+#define IDC_PORT_EDIT           1005
+#define IDC_NAME_EDIT           1006
+
 // Next default values for new objects
 //
 #ifdef APSTUDIO_INVOKED

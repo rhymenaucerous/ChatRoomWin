@@ -23,6 +23,8 @@ VOID GetAndAssign(PWCHAR pAssign, PDWORD pdwLen);
 
 VOID GetAndAppend();
 
-INT InitializeClient();
+INT PortRangeCheck(DWORD dwPort);
+
+INT InitializeClient(PVOID pParam);
 
 //End of file

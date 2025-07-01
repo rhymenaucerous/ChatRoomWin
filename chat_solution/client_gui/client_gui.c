@@ -11,8 +11,10 @@
 #include <windows.h>
 #include <io.h>
 #include <fcntl.h>
+#include <ws2tcpip.h> // For GetAddrInfoW
 
 #pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "ws2_32.lib")
 
 #define MAX_LOADSTRING 100
 
@@ -33,6 +35,7 @@ ATOM             MyRegisterClass(HINSTANCE hInstance);
 BOOL             InitInstance(HINSTANCE, int);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK ConnectionDlgProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK InputBoxSubclassProc(HWND      hWnd,
                                       UINT      uMsg,
                                       WPARAM    wParam,
@@ -93,10 +96,46 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
+    CONNECTION_INFO connInfo = {0};
+    BOOL            bProceed = FALSE;
+
+    if (SUCCESS != NetSetUp())
+    {
+        DEBUG_PRINT("NetSetUp()");
+        goto EXIT;
+    }
+
+    // Loop that runs until valid connection info is provided
+    while (!bProceed)
+    {
+        INT_PTR nResult = DialogBoxParamW(
+            hInstance, MAKEINTRESOURCE(IDD_CONNECTION_DIALOG), NULL,
+            ConnectionDlgProc, (LPARAM)&connInfo);
+
+        if (nResult == IDOK)
+        {
+            bProceed = TRUE;
+        }
+        else // User pressed Cancel or closed the dialog
+        {
+            return 0; // Exit application
+        }
+    }
+
+    // Allocate memory for connection info to pass to the new thread
+    PCONNECTION_INFO pThreadConnInfo = (PCONNECTION_INFO)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(CONNECTION_INFO));
+    if (pThreadConnInfo == NULL)
+    {
+        return -1; // Allocation failed
+    }
+    *pThreadConnInfo = connInfo; // Copy the validated data
+
+
     g_hInputReadyEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeClient, NULL, 0,
-                 NULL);
+    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitializeClient,
+                 pThreadConnInfo, 0, NULL);
 
     // Initialize global strings
     LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
@@ -122,6 +161,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             DispatchMessage(&msg);
         }
     }
+
+EXIT:
+    ZeroingHeapFree(GetProcessHeap(), 0, (PVOID)&pThreadConnInfo,
+                    sizeof(CONNECTION_INFO));
 
     return (int) msg.wParam;
 }
@@ -168,8 +211,16 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
    hInst = hInstance; // Store instance handle in our global variable
 
+   // Get screen dimensions to center the window
+   int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+   int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+   int windowWidth = 800;
+   int windowHeight = 600;
+   int x = (screenWidth - windowWidth) / 2;
+   int y = (screenHeight - windowHeight) / 2;
+
    HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, 0, 800, 600, NULL, NULL, hInstance, NULL);
+      x, y, windowWidth, windowHeight, NULL, NULL, hInstance, NULL);
 
    if (!hWnd)
    {
@@ -198,7 +249,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
    // Output box (read-only)
    hDisplayBox = CreateWindowW(
-       L"EDIT", L"", 
+       L"EDIT", L"",
        WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
        10, 100, 760, 350,
        hWnd, (HMENU)IDC_DISPLAYBOX, hInstance, NULL);
@@ -239,12 +290,13 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     static HBRUSH hbrStatusBkgnd = NULL; // Add this line
-    BOOL          bReturn = FALSE;
 
     if (WAIT_OBJECT_0 == WaitForSingleObject(g_hShutdownEvent, 0))
     {
+#ifdef _DEBUG
+        printf("Shutdown event signaled, closing client GUI.");
+#endif
         DestroyWindow(hWnd);
-        bReturn = TRUE;
         goto EXIT;
 
     }
@@ -313,7 +365,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     }
 
 EXIT:
-    return bReturn;
+    return 0;
 }
 
 // Message handler for about box.
@@ -359,4 +411,97 @@ LRESULT CALLBACK InputBoxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 
     // For all other messages, call the default procedure.
     return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
+INT_PTR CALLBACK ConnectionDlgProc(HWND hDlg, UINT message, WPARAM wParam,
+                                   LPARAM lParam)
+{
+    static PCONNECTION_INFO pConnInfo;
+
+    switch (message)
+    {
+    case WM_INITDIALOG:
+        {
+            // Center the dialog on the screen
+            RECT rcDialog;
+            GetWindowRect(hDlg, &rcDialog);
+            int iScreenWidth = GetSystemMetrics(SM_CXSCREEN);
+            int iScreenHeight = GetSystemMetrics(SM_CYSCREEN);
+
+            int iDlgWidth = rcDialog.right - rcDialog.left;
+            int iDlgHeight = rcDialog.bottom - rcDialog.top;
+
+            int x = (iScreenWidth - iDlgWidth) / 2;
+            int y = (iScreenHeight - iDlgHeight) / 2;
+        
+            SetWindowPos(hDlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+
+            pConnInfo = (PCONNECTION_INFO)lParam;
+        }
+        return (INT_PTR)TRUE;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK)
+        {
+            WCHAR szIp[MAX_ADDR_LEN + 1];
+            WCHAR szPort[MAX_PORT_LEN + 1];
+            WCHAR szName[MAX_UNAME_LEN + 1];
+
+            GetDlgItemTextW(hDlg, IDC_IP_EDIT, szIp, MAX_ADDR_LEN + 1);
+            GetDlgItemTextW(hDlg, IDC_PORT_EDIT, szPort, MAX_PORT_LEN + 1);
+            GetDlgItemTextW(hDlg, IDC_NAME_EDIT, szName, MAX_UNAME_LEN + 1);
+
+            // --- Validation ---
+
+            int port = _wtoi(szPort);
+            if (port <= 0 || port > 65535)
+            {
+                MessageBoxW(hDlg,
+                            L"Please enter a valid port number (1-65535).",
+                            L"Input Error", MB_OK | MB_ICONERROR);
+                return (INT_PTR)TRUE;
+            }
+
+            ADDRINFOW hints = {0};
+            SecureZeroMemory(&hints, sizeof(hints));
+            hints.ai_socktype  = SOCK_STREAM;
+            hints.ai_protocol  = IPPROTO_TCP;
+            hints.ai_family = AF_UNSPEC;
+
+            PADDRINFOW pResult = NULL;
+
+            if (GetAddrInfoW(szIp, NULL, &hints, &pResult) != 0)
+            {
+                MessageBoxW(hDlg,
+                            L"Please enter a valid IPv4, IPv6 address, or "
+                            L"hostname (like 'localhost').",
+                            L"Input Error", MB_OK | MB_ICONERROR);
+                return (INT_PTR)TRUE;
+            }
+            FreeAddrInfoW(pResult); // We only needed this for validation
+            pConnInfo->dwNameLength = wcslen(szName);
+            if (pConnInfo->dwNameLength == 0 ||
+                pConnInfo->dwNameLength > MAX_UNAME_LEN)
+            {
+                MessageBoxW(hDlg, L"User name must be between 1 and 10 characters.",
+                            L"Input Error", MB_OK | MB_ICONERROR);
+                return (INT_PTR)TRUE;
+            }
+
+            // --- Validation passed, copy data ---
+            wcscpy_s(pConnInfo->szIpAddress, MAX_ADDR_LEN + 1, szIp);
+            wcscpy_s(pConnInfo->szPort, MAX_PORT_LEN + 1, szPort);
+            wcscpy_s(pConnInfo->szUserName, MAX_UNAME_LEN + 1, szName);
+
+            EndDialog(hDlg, IDOK);
+            return (INT_PTR)TRUE;
+        }
+        if (LOWORD(wParam) == IDCANCEL)
+        {
+            EndDialog(hDlg, IDCANCEL);
+            return (INT_PTR)TRUE;
+        }
+        break;
+    }
+    return (INT_PTR)FALSE;
 }

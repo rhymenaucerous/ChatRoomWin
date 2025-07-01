@@ -22,6 +22,8 @@
 
 //NOTE: Design decision for reconsideration later.
 #define MAX_UNAME_LEN 10
+#define MAX_ADDR_LEN 39
+#define MAX_PORT_LEN 5
 
 #define NO_OPTION 0
 
@@ -185,5 +187,12 @@ typedef struct LISTENERARGS {
 extern HWND   hDisplayBox;
 extern HWND   hInputBox;
 extern HANDLE g_hInputReadyEvent;
+
+typedef struct _CONNECTION_INFO {
+    WCHAR szIpAddress[MAX_ADDR_LEN + 1];
+    WCHAR szPort[MAX_PORT_LEN + 1];
+    WCHAR szUserName[MAX_UNAME_LEN + 1];
+    SIZE_T dwNameLength;
+} CONNECTION_INFO, *PCONNECTION_INFO;
 
 //End of file

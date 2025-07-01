@@ -148,71 +148,14 @@ SendPacket(SOCKET RecvSock,
 	wsaBuffer[BODY_INDEX_2].len = dwBytesTwo;
 
 	DWORD dwBytesSent = 0;
-	DWORD dwBytesSentTotal = 0;
 
-	DWORD dwSentBytesOne = 0;
-	DWORD dwRemainBytesOne = 0;
-	DWORD dwSentBytesTwo = 0;
-	DWORD dwRemainBytesTwo = 0;
-
-	while (dwBytesSentTotal < dwPacketLen)
+	if (SOCKET_ERROR == WSASend(RecvSock, wsaBuffer, THREE_BUFFERS,
+		&dwBytesSent, NO_OPTION, NULL, NULL))
 	{
-		if (SOCKET_ERROR == WSASend(RecvSock, wsaBuffer, THREE_BUFFERS,
-			&dwBytesSent, NO_OPTION, NULL, NULL))
-		{
-			DEBUG_WSAERROR("WSASend failed");
-			return ERR_GENERIC;
-		}
-
-		dwBytesSentTotal += dwBytesSent;
-
-		//NOTE: Updating WSABuf for partial sends.
-		if (dwBytesSentTotal < dwPacketLen)
-		{
-			if (dwBytesSentTotal <= HEADER_LEN)
-			{
-				//NOTE: If the bytes sent is equal to HEADER_LEN, the new
-				//length will be 0, and the buffer will point to the
-				//terminating 0.
-				wsaBuffer[HEADER_INDEX].buf = (PCHAR)&ChatMsg + dwBytesSentTotal;
-				wsaBuffer[HEADER_INDEX].len = HEADER_LEN - dwBytesSentTotal;
-			}
-			else if (dwBytesSentTotal <= (HEADER_LEN + dwBytesOne))
-			{
-				//NOTE: If the entire header is sent but not all of data1, the
-				//buffer position and length of the first data buffer will be
-				//updated.
-				dwSentBytesOne = dwBytesSentTotal - HEADER_LEN;
-				dwRemainBytesOne = dwBytesOne - dwSentBytesOne;
-
-				wsaBuffer[HEADER_INDEX].buf = (PCHAR)&ChatMsg + HEADER_LEN;
-				wsaBuffer[HEADER_INDEX].len = 0;
-
-				//NOTE: Position of buffer updated by number of sent bytes,
-				//length updated to remaining unsent bytes.
-				wsaBuffer[BODY_INDEX_1].buf = (PCHAR)pszDataOne +
-					dwSentBytesOne;
-				wsaBuffer[BODY_INDEX_1].len = dwRemainBytesOne;
-			}
-			else //NOTE: Header and data1 have been sent but not all of data2.
-			{
-				//NOTE:sentbytesone includes sent header here, used to
-				//determine all bytes before data two.
-				dwSentBytesOne = HEADER_LEN + dwBytesOne;
-				dwSentBytesTwo = dwBytesSentTotal - dwSentBytesOne;
-				dwRemainBytesTwo = dwPacketLen - dwBytesSentTotal;
-
-				wsaBuffer[HEADER_INDEX].buf = (PCHAR)&ChatMsg + HEADER_LEN;
-				wsaBuffer[HEADER_INDEX].len = 0;
-				wsaBuffer[BODY_INDEX_1].buf = (PCHAR)pszDataOne +
-					(HEADER_LEN + dwBytesOne);
-				wsaBuffer[BODY_INDEX_1].len = 0;
-				wsaBuffer[BODY_INDEX_2].buf = (PCHAR)pszDataTwo +
-					dwSentBytesTwo;
-				wsaBuffer[BODY_INDEX_2].len = dwRemainBytesTwo;
-			}
-		}
+		DEBUG_WSAERROR("WSASend failed");
+		return ERR_GENERIC;
 	}
+
 	return S_OK;
 }
 
@@ -332,7 +275,7 @@ BlockingRecv(WSAEVENT hReadEvent,
 {
 	//NOTE: Don't need to release handle here as it will be released at the end
 	//of program execution along with the stack.
-    DWORD dwSocketWait = CustomWaitForSingleObject(hReadEvent, INFINITE);
+    DWORD dwSocketWait = CustomWaitForSingleObject(hReadEvent, LISTEN_TIMEOUT);
     WSAResetEvent(hReadEvent);
 	switch (dwSocketWait)
 	{
@@ -344,7 +287,7 @@ BlockingRecv(WSAEVENT hReadEvent,
 		//NOTE: The server could just be very busy. Wait until connection is broken
 		//to shutdown client.
 		DEBUG_ERROR("Network issue: Server did not acknowledge message within timeout period");
-		return E_UNEXPECTED;
+        return E_FAIL;
 
 	case WAIT_ABANDONED_0:
 		DEBUG_ERROR("WAIT_ABANDONED_0");

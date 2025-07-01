@@ -163,8 +163,7 @@ GracefulShutdown(_In_ DWORD dwCtrlType)
 	}
 }
 
-static INT
-PortRangeCheck(DWORD dwPort)
+INT PortRangeCheck(DWORD dwPort)
 {
 	if ((0 >= dwPort) || (65535 < dwPort))
 	{
@@ -173,16 +172,6 @@ PortRangeCheck(DWORD dwPort)
 	}
 
 	return SUCCESS;
-}
-
-static VOID
-PrintHelp()
-{
-	printf("\nChat Client Usage:\nchat_client.exe <connect_ip> "
-		"<connect_port> <unique_client_name>\nExample:chat_client.exe "
-		"192.168.0.10 1234 asdf\n\nIP and port must be a valid chat server. "
-		"client name must not already be in use on server.\nOnly the first 10 "
-		"characters of the given user name will be considered.\n");
 }
 
 static INT
@@ -226,8 +215,7 @@ CommandLineArgs(INT argc, PTSTR argv[], PCLIENTCHATARGS pChatArgs)
 }
 
 static VOID
-ClientShutdown(PCLIENTCHATARGS pChatArgs, PLISTENERARGS pListenerArgs,
-	BOOL bPrintHelp)
+ClientShutdown(PCLIENTCHATARGS pChatArgs, PLISTENERARGS pListenerArgs)
 {
 	if (NULL != pChatArgs)
 	{
@@ -240,59 +228,68 @@ ClientShutdown(PCLIENTCHATARGS pChatArgs, PLISTENERARGS pListenerArgs,
 		ZeroingHeapFree(GetProcessHeap(), NO_OPTION, &pListenerArgs,
 			sizeof(LISTENERARGS));
 	}
-
-	if (bPrintHelp)
-	{
-		PrintHelp();
-	}
 }
 
-INT InitializeClient()
+INT InitializeClient(PVOID pParam)
 {
+    INT              iReturn         = ERR_GENERIC;
+    PCONNECTION_INFO pThreadConnInfo = pParam;
+    PCLIENTCHATARGS  pChatArgs       = NULL;
+    PLISTENERARGS    pListenerArgs   = NULL;
+    SOCKET           ServerSocket    = INVALID_SOCKET;
+
+    if (NULL == pThreadConnInfo)
+	{
+		DEBUG_ERROR("Invalid connection info");
+		return ERR_INVALID_PARAM;
+    }
+
     g_hShutdownEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
 	if (!SetConsoleCtrlHandler(GracefulShutdown, TRUE))
 	{
 		DEBUG_ERROR("CreateThread failed");
 		return ERR_GENERIC;
-	}
+    }
 
-	PCLIENTCHATARGS pChatArgs = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
-		sizeof(CLIENTCHATARGS));
+    pChatArgs =
+        HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(CLIENTCHATARGS));
 	if (NULL == pChatArgs)
 	{
 		DEBUG_ERROR("CloseHandle failed");
 		return ERR_GENERIC;
 	}
 
-	pChatArgs->m_pszConnectIP   = L"localhost";
-    pChatArgs->m_pszConnectPort = L"1234";
-    pChatArgs->m_pszClientName  = L"Chris";
-    pChatArgs->m_szNameLength   = 5;
+    // --- Replace command line arg parsing with data from our struct ---
+    pChatArgs->m_pszConnectIP   = pThreadConnInfo->szIpAddress;
+    pChatArgs->m_pszConnectPort = pThreadConnInfo->szPort;
+    pChatArgs->m_pszClientName  = pThreadConnInfo->szUserName;
+    pChatArgs->m_szNameLength   = pThreadConnInfo->dwNameLength;
 
 	//NOTE: Connects to the server socket.
-	SOCKET ServerSocket = ChatConnect(pChatArgs);
+	ServerSocket = ChatConnect(pChatArgs);
 	if (INVALID_SOCKET == ServerSocket)
 	{
+        MessageBox(NULL,
+                   L"Server not available at specified address",
+                   NULL, MB_OK);
 		DEBUG_PRINT("ChatConnect failed");
-		ClientShutdown(pChatArgs, NULL, PRINT_HELP);
-		return ERR_GENERIC;
+        goto EXIT;
 	}
 
 	//NOTE: Creates structures to share data/resources between threads.
-	PLISTENERARGS pListenerArgs = ChatCreate(ServerSocket);
+	pListenerArgs = ChatCreate(ServerSocket);
 	if (NULL == pListenerArgs)
 	{
-		DEBUG_PRINT("ChatCreate failed");
-		ClientShutdown(pChatArgs, pListenerArgs, DONT_PRINT_HELP);
-		return ERR_GENERIC;
+        DEBUG_PRINT("ChatCreate failed");
+        goto EXIT;
 	}
 
 	if (S_OK != HandleRegistration(pChatArgs->m_pszClientName,
 		pChatArgs->m_szNameLength, pListenerArgs))
 	{
-		DEBUG_PRINT("HandleRegistration failed");
-		ClientShutdown(pChatArgs, pListenerArgs, DONT_PRINT_HELP);
-		return ERR_GENERIC;
+        DEBUG_PRINT("HandleRegistration failed");
+        goto EXIT;
 	}
 
 	//NOTE: Creating thread to handle server messages. Will continuously wait
@@ -303,9 +300,8 @@ INT InitializeClient()
 
 	if (NULL == hListenerThread)
 	{
-		DEBUG_ERROR("CreateThread failed");
-		ClientShutdown(pChatArgs, pListenerArgs, DONT_PRINT_HELP);
-		return ERR_GENERIC;
+        DEBUG_ERROR("CreateThread failed");
+        goto EXIT;
 	}
 
 	//NOTE: Function for handling user input to the client - sends and recieves
@@ -340,10 +336,16 @@ INT InitializeClient()
 		DEBUG_WSAERROR("shutdown failed");
 	}
 
+	iReturn = SUCCESS;
+EXIT:
 	NetCleanup(ServerSocket, INVALID_SOCKET);
-	ClientShutdown(pChatArgs, pListenerArgs, DONT_PRINT_HELP);
-
-	return SUCCESS;
+    ClientShutdown(pChatArgs, pListenerArgs);
+    InterlockedExchange((PLONG)&g_bClientState, STOP);
+    if (NULL != g_hShutdownEvent)
+	{
+		SetEvent(g_hShutdownEvent);
+    }
+	return iReturn;
 }
 
 //End of file

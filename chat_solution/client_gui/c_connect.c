@@ -77,12 +77,6 @@ ChatConnect(PCLIENTCHATARGS pChatArgs)
 		return INVALID_SOCKET;
 	}
 
-	if (SUCCESS != NetSetUp())
-	{
-		DEBUG_PRINT("NetSetUp()");
-		return INVALID_SOCKET;
-	}
-
     SOCKET ServerSocket =
         NetConnect(pChatArgs->m_pszConnectIP, pChatArgs->m_pszConnectPort);
 
