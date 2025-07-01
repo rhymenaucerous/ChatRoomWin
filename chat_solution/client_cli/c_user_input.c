@@ -151,7 +151,7 @@ HandleSrvReturn(PLISTENERARGS pListenerArgs, CHATMSG ExpectedReturn)
 		}
 		else if (RecvChat.iType == TYPE_FAILURE) //NOTE: Failure packet
 		{
-			DEBUG_PRINT("Failure packet: %d", RecvChat.iOpcode);
+            PrintFailurePacket(RecvChat.iOpcode);
 			break;
 		}
 		else //unknown packet
@@ -351,7 +351,7 @@ HandleQuit(PLISTENERARGS pListenerArgs)
 static VOID
 PrintHelp()
 {
-	DEBUG_PRINT("Options Allowed:\n/msg\n/broadcast\n/list\n/quit\n");
+	printf("Options Allowed:\n/msg\n/broadcast\n/list\n/quit\n");
 }
 
 //grab necessary structures and start listening - listener

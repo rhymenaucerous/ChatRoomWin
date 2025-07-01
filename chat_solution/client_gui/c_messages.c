@@ -16,38 +16,40 @@
 #include "c_main.h"
 #include "Messages.h"
 
-VOID ThreadPrintFailurePacket(INT8 wRejectCode)
+VOID PrintFailurePacket(INT8 wRejectCode)
 {
+    PWSTR pszRejectMsg = NULL;
 	switch (wRejectCode)
 	{
-	case REJECT_SRV_BUSY:
-		DEBUG_PRINT("Failure: Server Busy");
+    case REJECT_SRV_BUSY:
+        pszRejectMsg = L"Failure: Server Busy";
 		break;
 	case REJECT_SRV_ERR:
-		DEBUG_PRINT("Failure: Server Error");
+        pszRejectMsg = L"Failure: Server Error";
 		break;
 	case REJECT_INVALID_PACKET:
-		DEBUG_PRINT("Failure: Invalid packet sent to server");
+        pszRejectMsg = L"Failure: Invalid packet sent to server";
 		break;
 	case REJECT_UNAME_LEN:
-		DEBUG_PRINT("Failure: Username too long");
+        pszRejectMsg = L"Failure: Username too long";
 		break;
 	case REJECT_USER_LOGGED:
-		DEBUG_PRINT("Failure: User already exists");
+        pszRejectMsg = L"Failure: User already exists";
 		break;
 	case REJECT_USER_NOT_EXIST:
-		DEBUG_PRINT("Failure: User does not exist");
+        pszRejectMsg = L"Failure: User does not exist";
 		break;
 	case REJECT_MSG_LEN:
-		DEBUG_PRINT("Failure: Message too long");
+        pszRejectMsg = L"Failure: Message too long";
 		break;
 	case REJECT_SRV_FULL:
-		DEBUG_PRINT("Failure: Server full");
+        pszRejectMsg = L"Failure: Server full";
 		break;
 	default:
-		DEBUG_PRINT("Failure: Unknown error packet received from server");
+        pszRejectMsg = L"Failure: Unknown error packet received from server";
 		break;
-	}
+    }
+    MessageBox(NULL, pszRejectMsg, NULL, MB_OK);
 }
 
 VOID CustomStringPrintTwo(PWSTR pszStrOne,

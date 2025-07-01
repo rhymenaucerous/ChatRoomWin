@@ -223,8 +223,8 @@ HandleSrvReturn(PLISTENERARGS pListenerArgs, CHATMSG ExpectedReturn)
 		}
 		else if (RecvChat.iType == TYPE_FAILURE) //NOTE: Failure packet
 		{
-			DEBUG_PRINT("Failure packet: %d", RecvChat.iOpcode);
-			break;
+            PrintFailurePacket(RecvChat.iOpcode);
+			return E_UNEXPECTED;
 		}
 		else //unknown packet
 		{
@@ -277,17 +277,21 @@ HandleMsg(PLISTENERARGS pListenerArgs, WORD wLenUser, PWSTR pszUser,
 	HRESULT hReturn = HandleSrvReturn(pListenerArgs, ExpectedReturn);
 	ReleaseMutex(hSocketHandle);
 
-    WstrNetToHost(pszUser, wLenUser);
-    WstrNetToHost(pszMsg, wLenMsg);
-    AppendToDisplayNoNewline(L"You to [ ");
-    AppendToDisplayNoNewline(pszUser);
-    AppendToDisplayNoNewline(L"]> ");
-    AppendToDisplay(pszMsg);
-
 	if (E_FAIL == hReturn)
 	{
 		DEBUG_ERROR("PacketHeapFree failed");
 		return hReturn;
+    }
+
+	// If the server ackowledged the message, print it to the display.
+	if (E_UNEXPECTED != hReturn)
+    {
+        WstrNetToHost(pszUser, wLenUser);
+        WstrNetToHost(pszMsg, wLenMsg);
+        AppendToDisplayNoNewline(L"You to [ ");
+        AppendToDisplayNoNewline(pszUser);
+        AppendToDisplayNoNewline(L"]> ");
+        AppendToDisplay(pszMsg);
 	}
 
 	return S_OK;

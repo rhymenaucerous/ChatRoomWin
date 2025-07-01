@@ -23,7 +23,7 @@
  //NOTE: Custom message lengths section
 #define MESSAGE_HDR_1_LEN 73
 
-VOID ThreadPrintFailurePacket(INT8 wRejectCode);
+VOID PrintFailurePacket(INT8 wRejectCode);
 
 VOID CustomStringPrintTwo(PWSTR pszStrOne,
                           PWSTR pszStrTwo,

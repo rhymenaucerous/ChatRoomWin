@@ -16,36 +16,36 @@
 #include "c_main.h"
 #include "Messages.h"
 
-VOID ThreadPrintFailurePacket(INT8 wRejectCode)
+VOID PrintFailurePacket(INT8 wRejectCode)
 {
 	switch (wRejectCode)
 	{
 	case REJECT_SRV_BUSY:
-		DEBUG_PRINT("Failure: Server Busy");
+		printf("Failure: Server Busy\n");
 		break;
 	case REJECT_SRV_ERR:
-		DEBUG_PRINT("Failure: Server Error");
+        printf("Failure: Server Error\n");
 		break;
 	case REJECT_INVALID_PACKET:
-		DEBUG_PRINT("Failure: Invalid packet sent to server");
+        printf("Failure: Invalid packet sent to server\n");
 		break;
 	case REJECT_UNAME_LEN:
-		DEBUG_PRINT("Failure: Username too long");
+        printf("Failure: Username too long\n");
 		break;
 	case REJECT_USER_LOGGED:
-		DEBUG_PRINT("Failure: User already exists");
+        printf("Failure: User already exists\n");
 		break;
 	case REJECT_USER_NOT_EXIST:
-		DEBUG_PRINT("Failure: User does not exist");
+        printf("Failure: User does not exist\n");
 		break;
 	case REJECT_MSG_LEN:
-		DEBUG_PRINT("Failure: Message too long");
+        printf("Failure: Message too long\n");
 		break;
 	case REJECT_SRV_FULL:
-		DEBUG_PRINT("Failure: Server full");
+        printf("Failure: Server full\n");
 		break;
 	default:
-		DEBUG_PRINT("Failure: Unknown error packet received from server");
+        printf("Failure: Unknown error packet received from server\n");
 		break;
 	}
 }

@@ -138,6 +138,10 @@ typedef enum
     do                                                                         \
     {                                                                          \
     } while (0)
+#define DEBUG_ERROR_SUPPLIED(fmt, ...)                                                 \
+    do                                                                         \
+    {                                                                          \
+    } while (0)
 #define DEBUG_WSAERROR(fmt, ...)                                               \
     do                                                                         \
     {                                                                          \
