@@ -223,7 +223,8 @@ Assert::AreNotEqual(INVALID_SOCKET, ClientSocket);
 
 // Clean up
 CloseThreadpoolWork(acceptWork);
-NetCleanup(ListenSocket, ClientSocket);
+NetCleanup(ListenSocket, DONT_CLEAN);
+NetCleanup(ClientSocket, DO_CLEAN);
 closesocket(ServerSocket);
 } // TEST_METHOD(EasyConnect)
 public:
@@ -255,7 +256,8 @@ TEST_METHOD(IPV6)
 
     // Clean up
     CloseThreadpoolWork(acceptWork);
-    NetCleanup(ListenSocket, ClientSocket);
+    NetCleanup(ListenSocket, DONT_CLEAN);
+    NetCleanup(ClientSocket, DO_CLEAN);
     closesocket(ServerSocket);
 } // TEST_METHOD(IPV6)
 public:
