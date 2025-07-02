@@ -15,7 +15,7 @@ The fourth figure, below, just describes about how the readers and writers inter
 
 ![alt text](README_Folder/Images/ChatServerV1.png)
 
-*Figure 2. Chat Server Overview Flowchart. (The logic on the server side has been updated and this diagram does not reflect that update: The new logic uses Win32 API events to drive which thread is active)*
+*Figure 2. Chat Server Overview Flowchart. (The logic on the client side has been updated and this diagram does not reflect that update: The new logic uses Win32 API events to drive which thread is active)*
 
 ![alt text](README_Folder/Images/IOCP_Srv_Logic.png)
 
